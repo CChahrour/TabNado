@@ -162,7 +162,9 @@ def load_params(params_path: Path | str | None = None) -> dict:
         "WINDOW_SIZE": p["window_size"],
         "STEP_SIZE": p["step_size"],
         "TILE_SIZE": p["tile_size"],
-        "CHUNK_SIZE_ROWS": int(p["chunk_size_rows"]),
+        "CHUNK_SIZE_ROWS": int(p["chunk_size_rows"])
+        if "chunk_size_rows" in p and p["chunk_size_rows"] is not None
+        else None,
         "date": date,
         "PROJECT": project,
         "RES_DIR": res_dir,

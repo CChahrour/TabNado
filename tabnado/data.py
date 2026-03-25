@@ -82,7 +82,7 @@ def build_signal_df(
     samples: list[str],
     tss_windows,
     signal_path: str,
-    chunk_size_rows: int = 1_000_000,
+    chunk_size_rows: int | None = None,
 ) -> pd.DataFrame:
     """Extract binned signal, normalise to RPKM, log1p + MinMax scale, save parquet."""
     logger.info("Extracting signal from dataset")
@@ -99,10 +99,16 @@ def build_signal_df(
     )
 
     logger.info("Applying log1p and per-cofactor MinMax scaling")
-    n_samples = rpkm_signal.data.shape[1]
-    logger.info(f"Using chunk size {chunk_size_rows} rows × {n_samples} samples")
+    n_rows, n_samples = rpkm_signal.data.shape
+    if chunk_size_rows is None or int(chunk_size_rows) <= 0:
+        effective_chunk_rows = int(n_rows)
+    else:
+        effective_chunk_rows = min(int(chunk_size_rows), int(n_rows))
+    logger.info(
+        f"Using chunk size {effective_chunk_rows} rows × {n_samples} samples"
+    )
     logged = da.log1p(rpkm_signal.data.astype("float32")).rechunk(
-        (chunk_size_rows, n_samples)
+        (effective_chunk_rows, n_samples)
     )
     min_vals = logged.min(axis=0, keepdims=True)
     max_vals = logged.max(axis=0, keepdims=True)
@@ -411,7 +417,7 @@ def load_data(
     WINDOW_SIZE: int = 3000,
     STEP_SIZE: int = 100,
     TILE_SIZE: int = 100,
-    CHUNK_SIZE_ROWS: int = 1_000_000,
+    CHUNK_SIZE_ROWS: int | None = None,
 ):
     DATA_DIR = f"{RES_DIR}/dataset"
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)

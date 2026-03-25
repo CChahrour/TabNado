@@ -13,7 +13,6 @@ eval_chr: chr8
 test_chr: chr9
 output_dir: results
 dataset: data/dataset
-chunk_size_rows: 1000000
 windows_bed: data/tss_windows.bed
 n_sweeps: 10
 logging: wandb
