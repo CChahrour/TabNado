@@ -1,8 +1,15 @@
 # TabNado
+[![Docs](https://img.shields.io/badge/docs-cchahrour.github.io-blue)](https://cchahrour.github.io/TabNado/)
+[![CI](https://github.com/CChahrour/TabNado/actions/workflows/python-tests.yml/badge.svg)](https://github.com/Milne-Group/TabNado/actions/workflows/python-tests.yml)
+
+<p align="center">
+  <img src="docs/assets/tabnado.png" alt="TabNado logo" width="192">
+</p>
+
 
 Predicts binding from epigenomic cofactors (ChIP-seq, CUT&TAG, CUT&RUN) over tiled TSS windows or user-defined BED regions, with support for both GANDALF (neural tabular) and XGBoost backends.
 
-Uses datasets prepared with [QuantNado](https://github.com/Milne-Group/QuantNado) or [SeqNado](https://github.com/Milne-Group/SeqNado).
+Uses datasets prepared with [QuantNado](https://github.com/Milne-Group/QuantNado) via [SeqNado](https://github.com/Milne-Group/SeqNado).
 
 ## Overview
 

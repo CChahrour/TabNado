@@ -1,7 +1,7 @@
 site_name: TabNado
 site_description: Predict binding from cofactor signal with a GANDALF tabular pipeline.
 site_author: Catherine Chahrour
-site_url: https://cchahrour.github.io/tabnado/
+site_url: https://cchahrour.github.io/TabNado/
 
 repo_url: https://github.com/CChahrour/TabNado
 repo_name: CChahrour/tabnado
@@ -10,10 +10,14 @@ copyright: Copyright &copy; 2026 Catherine Chahrour
 
 theme:
   name: material
+  logo: assets/tabnado.png
+  favicon: assets/tabnado.png
   features:
     - content.code.copy
     - navigation.expand
     - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.top
     - search.highlight
     - search.suggest
