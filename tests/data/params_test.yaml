@@ -1,0 +1,22 @@
+# tabnado parameters
+# Required keys
+target: MLLN
+model_name: GANDALF
+sweep_fraction: 0.2
+gtf_file: tests/data/test_anno.gtf
+eval_chr: chr8
+test_chr: chr9
+output_dir: test_output/results
+
+# Optional keys
+dataset: test_output/data
+# windows_bed: data/tss_windows.bed
+n_sweeps: 2
+logging: tensorboard
+min_target: 1
+min_features: 4
+exclude_ips: ["AF4C", "MLLC"]
+prefixes: ["CAT", "ChIP", "CM"]
+window_size: 3000
+step_size: 100
+tile_size: 200

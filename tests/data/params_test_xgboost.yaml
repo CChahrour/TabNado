@@ -1,0 +1,19 @@
+# tabnado parameters — XGBoost backend test
+target: MLLN
+model_name: XGBoost
+sweep_fraction: 0.5
+gtf_file: tests/data/test_anno.gtf
+eval_chr: chr8
+test_chr: chr9
+output_dir: test_output/results
+
+dataset: test_output/data
+n_sweeps: 3
+logging: tensorboard
+min_target: 1
+min_features: 4
+exclude_ips: ["AF4C", "MLLC"]
+prefixes: ["CAT", "ChIP", "CM"]
+window_size: 3000
+step_size: 100
+tile_size: 200

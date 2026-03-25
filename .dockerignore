@@ -1,0 +1,18 @@
+.git
+.github
+.vscode
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Local and generated artifacts
+test_output
+site
+
+# Local dev files
+.venv
+.claude
+.DS_Store

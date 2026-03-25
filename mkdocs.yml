@@ -1,0 +1,63 @@
+site_name: TabNado
+site_description: Predict binding from cofactor signal with a GANDALF tabular pipeline.
+site_author: Catherine Chahrour
+site_url: https://cchahrour.github.io/tabnado/
+
+repo_url: https://github.com/CChahrour/tabnado
+repo_name: CChahrour/tabnado
+
+copyright: Copyright &copy; 2026 Catherine Chahrour
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.expand
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+
+markdown_extensions:
+  - toc:
+      permalink: true
+      toc_depth: 4
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.inlinehilite
+  - tables
+  - attr_list
+  - md_in_html
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quick Start: quick_start.md
+  - Pipeline:
+      - Overview: pipeline.md
+      - Configuration: configuration.md
+      - Outputs: outputs.md
+  - CLI Reference: cli.md
+  - API:
+      - Overview: api/overview.md
