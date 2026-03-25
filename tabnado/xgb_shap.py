@@ -1,12 +1,12 @@
 import os
 from time import perf_counter
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import shap
+from matplotlib import cm, colors
 from loguru import logger
 
 from tabnado.utils import LOAD_DATA_PARAMS, figure_style
@@ -54,7 +54,13 @@ def compute_xgb_shap(
     for booster in estimators:
         explainer = shap.Explainer(booster, X_bg)
         ex = explainer(X_test_sub, check_additivity=False)
-        sv_list.append(ex.values)
+        if isinstance(ex, list):
+            if not ex:
+                raise ValueError("SHAP explainer returned an empty explanation list")
+            ex_values = ex[0].values if hasattr(ex[0], "values") else ex[0]
+        else:
+            ex_values = ex.values if hasattr(ex, "values") else ex
+        sv_list.append(np.asarray(ex_values))
     shap_values = sv_list
 
     # SHAP may return either a list (one array per target) or a single
@@ -119,13 +125,13 @@ def compute_xgb_shap(
     g.figure.canvas.draw()
     hm_pos = g.ax_heatmap.get_position()
     cbar_ax = g.figure.add_axes(
-        [hm_pos.x0 + hm_pos.width * 0.15, hm_pos.y1 + 0.14, hm_pos.width * 0.7, 0.03]
+        (hm_pos.x0 + hm_pos.width * 0.15, hm_pos.y1 + 0.14, hm_pos.width * 0.7, 0.03)
     )
-    norm = mpl.colors.Normalize(
+    norm = colors.Normalize(
         vmin=clustermap_data.values.min(), vmax=clustermap_data.values.max()
     )
     cb = g.figure.colorbar(
-        mpl.cm.ScalarMappable(norm=norm, cmap="Reds"),
+        cm.ScalarMappable(norm=norm, cmap="Reds"),
         cax=cbar_ax,
         orientation="horizontal",
     )
@@ -261,8 +267,9 @@ def _plot_spatial_shap(
 
         # === Line plot: aggregate across cofactors ===
         offset_importance = spatial_df.mean(axis=0)
+        offset_importance_np = offset_importance.to_numpy(dtype=float)
         fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(centre_bp, offset_importance.values, marker="o", linewidth=2)
+        ax.plot(centre_bp, offset_importance_np, marker="o", linewidth=2)
         ax.axvline(x=0, color="red", linestyle="--", alpha=0.7, label="TSS center")
         ax.set_xlabel("Offset from TSS (bp)")
         ax.set_ylabel("Mean |SHAP| (avg across cofactors)")

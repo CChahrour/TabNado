@@ -74,7 +74,7 @@ Example single-job submission script (`run_tabnado.sbatch`):
 
 ```bash
 #!/bin/bash
-#SBATCH --job-name=cofactor-model
+#SBATCH --job-name=tabnado
 #SBATCH --partition=compute
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
@@ -103,7 +103,7 @@ Example array job for multiple parameter files:
 
 ```bash
 #!/bin/bash
-#SBATCH --job-name=cofactor-array
+#SBATCH --job-name=tabnado-array
 #SBATCH --array=0-3
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G

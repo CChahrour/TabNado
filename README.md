@@ -98,7 +98,7 @@ tabnado-shap     --params params.yaml   # SHAP analysis → results/<project>/sh
 
 ```bash
 #!/bin/bash
-#SBATCH --job-name=cofactor-model
+#SBATCH --job-name=tabnado
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
@@ -124,7 +124,7 @@ For multiple experiments, use a SLURM array:
 
 ```bash
 #!/bin/bash
-#SBATCH --job-name=cofactor-model
+#SBATCH --job-name=tabnado
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
