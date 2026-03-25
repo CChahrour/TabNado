@@ -95,7 +95,8 @@ def build_signal_df(
     )
 
     logger.info("Applying log1p and per-cofactor MinMax scaling")
-    logged = da.log1p(rpkm_signal.data.astype("float32")).rechunk((100_000, 163))
+    n_samples = rpkm_signal.data.shape[1]
+    logged = da.log1p(rpkm_signal.data.astype("float32")).rechunk((1_000_000, n_samples))
     min_vals = logged.min(axis=0, keepdims=True)
     max_vals = logged.max(axis=0, keepdims=True)
     scaled_values = (logged - min_vals) / (max_vals - min_vals)
