@@ -20,8 +20,8 @@ def peak_output_dir(request, worker_id):
 
 def test_peaks_pathway(coverage_path, peak_output_dir):
     """Test data loading using a BED peaks file instead of GTF."""
-    from tabnado.data import LOAD_DATA_PARAMS, load_data
-    from tabnado.utils import load_params
+    from tabnado.data import load_data
+    from tabnado.utils import load_params, LOAD_DATA_PARAMS
 
     params = load_params(PEAKS_PARAMS_PATH)
     # Override WINDOWS_BED to use the test peaks file

@@ -78,7 +78,11 @@ def get_tss_windows(
 
 
 def build_signal_df(
-    ds, samples: list[str], tss_windows, signal_path: str
+    ds,
+    samples: list[str],
+    tss_windows,
+    signal_path: str,
+    chunk_size_rows: int = 1_000_000,
 ) -> pd.DataFrame:
     """Extract binned signal, normalise to RPKM, log1p + MinMax scale, save parquet."""
     logger.info("Extracting signal from dataset")
@@ -96,7 +100,10 @@ def build_signal_df(
 
     logger.info("Applying log1p and per-cofactor MinMax scaling")
     n_samples = rpkm_signal.data.shape[1]
-    logged = da.log1p(rpkm_signal.data.astype("float32")).rechunk((1_000_000, n_samples))
+    logger.info(f"Using chunk size {chunk_size_rows} rows × {n_samples} samples")
+    logged = da.log1p(rpkm_signal.data.astype("float32")).rechunk(
+        (chunk_size_rows, n_samples)
+    )
     min_vals = logged.min(axis=0, keepdims=True)
     max_vals = logged.max(axis=0, keepdims=True)
     scaled_values = (logged - min_vals) / (max_vals - min_vals)
@@ -282,6 +289,7 @@ def load_or_build_datasets(
     tile_size: int = 100,
     fig_dir: str | None = None,
     target_cols: list[str] | None = None,
+    chunk_size_rows: int = 1_000_000,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Return (train_data, eval_data, test_data), building from scratch if not cached."""
     if (
@@ -310,7 +318,9 @@ def load_or_build_datasets(
         tss_windows = get_tss_windows(
             gtf_file, windows_bed, window_size, step_size, tile_size
         )
-        signal_df = build_signal_df(ds, samples, tss_windows, signal_path)
+        signal_df = build_signal_df(
+            ds, samples, tss_windows, signal_path, chunk_size_rows=chunk_size_rows
+        )
 
     logger.info(f"Splitting by chromosome: eval={eval_chr}, test={test_chr}")
     train_data = signal_df[
@@ -401,6 +411,7 @@ def load_data(
     WINDOW_SIZE: int = 3000,
     STEP_SIZE: int = 100,
     TILE_SIZE: int = 100,
+    CHUNK_SIZE_ROWS: int = 1_000_000,
 ):
     DATA_DIR = f"{RES_DIR}/dataset"
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
@@ -430,6 +441,7 @@ def load_data(
         tile_size=TILE_SIZE,
         fig_dir=FIG_DIR,
         target_cols=target_cols,
+        chunk_size_rows=CHUNK_SIZE_ROWS,
     )
 
     actual_target_cols = [col for col in target_cols if col in train_data.columns]

@@ -6,8 +6,8 @@ gtf_file: tests/data/test_anno.gtf
 eval_chr: chr8
 test_chr: chr9
 output_dir: test_output/results
-
 dataset: test_output/data
+chunk_size_rows: 1000000
 n_sweeps: 3
 logging: tensorboard
 min_target: 1

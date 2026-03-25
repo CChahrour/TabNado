@@ -7,10 +7,8 @@ gtf_file: tests/data/test_anno.gtf
 eval_chr: chr8
 test_chr: chr9
 output_dir: test_output/results
-
-# Optional keys
 dataset: test_output/data
-# windows_bed: data/tss_windows.bed
+chunk_size_rows: 1000000
 n_sweeps: 2
 logging: tensorboard
 min_target: 1
