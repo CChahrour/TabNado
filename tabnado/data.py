@@ -104,9 +104,7 @@ def build_signal_df(
         effective_chunk_rows = int(n_rows)
     else:
         effective_chunk_rows = min(int(chunk_size_rows), int(n_rows))
-    logger.info(
-        f"Using chunk size {effective_chunk_rows} rows × {n_samples} samples"
-    )
+    logger.info(f"Using chunk size {effective_chunk_rows} rows × {n_samples} samples")
     logged = da.log1p(rpkm_signal.data.astype("float32")).rechunk(
         (effective_chunk_rows, n_samples)
     )
