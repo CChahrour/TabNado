@@ -1,0 +1,40 @@
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v2
+        with:
+          enable-cache: true
+
+      - id: cache-id
+        run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          key: mkdocs-material-${{ steps.cache-id.outputs.cache_id }}
+          path: .cache
+          restore-keys: |
+            mkdocs-material-
+
+      - name: Build and deploy
+        run: |
+          uv run --with mkdocs-material mkdocs build
+          uv run --with mkdocs-material mkdocs gh-deploy --force

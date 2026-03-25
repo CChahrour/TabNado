@@ -1,0 +1,43 @@
+name: Tests
+
+on:
+  push:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test_target:
+          - tests/test_cli.py
+          - tests/test_peaks.py
+          - tests/test_pipeline_gandalf.py
+          - tests/test_pipeline_xgboost.py
+    env:
+      UV_PYTHON: "3.12"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: astral-sh/setup-uv@v2
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras --frozen
+          uv pip install pytorch-tabular==1.2.0 --no-deps
+          uv pip install "pytorch-lightning>=2.0.0,<2.7.0" "torchmetrics>=0.10.0,<1.9.0"
+
+      - name: Run tests (${{ matrix.test_target }})
+        run: >-
+          uv run --python 3.12 pytest
+          -vv -s -rA
+          ${{ matrix.test_target }}

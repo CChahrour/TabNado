@@ -3,7 +3,7 @@ site_description: Predict binding from cofactor signal with a GANDALF tabular pi
 site_author: Catherine Chahrour
 site_url: https://cchahrour.github.io/tabnado/
 
-repo_url: https://github.com/CChahrour/tabnado
+repo_url: https://github.com/CChahrour/TabNado
 repo_name: CChahrour/tabnado
 
 copyright: Copyright &copy; 2026 Catherine Chahrour
