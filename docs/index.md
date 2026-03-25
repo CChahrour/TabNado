@@ -1,4 +1,7 @@
 # TabNado
+[![Docs](https://img.shields.io/badge/docs-cchahrour.github.io-blue)](https://cchahrour.github.io/TabNado/)
+[![CI](https://github.com/CChahrour/TabNado/actions/workflows/python-tests.yml/badge.svg)](https://github.com/CChahrour/TabNado/actions/workflows/python-tests.yml)
+
 
 <p align="center">
 	<img src="assets/tabnado.png" alt="TabNado logo" width="220" />
