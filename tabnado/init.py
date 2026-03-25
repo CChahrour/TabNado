@@ -32,9 +32,7 @@ def main() -> None:
     """Create a template params YAML file for a new run."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Create a tabnado params template"
-    )
+    parser = argparse.ArgumentParser(description="Create a tabnado params template")
     parser.add_argument(
         "path",
         nargs="?",
