@@ -18,15 +18,19 @@ def sweep_xgboost(
     sweep_fraction: float = 0.1,
     RES_DIR: str = "results",
     seed: int = 42,
+    LOGGING: str = "wandb",
+    PROJECT: str = "PROJECT_NAME",
     **kwargs,
 ) -> dict:
     """
     Randomised HP search for XGBoost using GroupKFold on chromosomes.
+    When LOGGING == 'wandb', each candidate run is logged to wandb after the
+    search completes.
 
-    Returns best_hp dict (without the 'estimator__' prefix) and saves
-    best_hyperparameters.json to RES_DIR.
+    Returns best_hp dict and saves best_hyperparameters.json to RES_DIR.
     """
     Path(RES_DIR).mkdir(parents=True, exist_ok=True)
+    use_wandb = LOGGING == "wandb"
 
     base = xgb.XGBRegressor(
         objective="reg:squarederror",
@@ -62,7 +66,6 @@ def sweep_xgboost(
             "estimator__reg_lambda": [0.1, 1.0, 5.0, 10.0],
         }
 
-    # Subsample training data for sweep
     tune_data = train_data.sample(frac=min(sweep_fraction, 1.0), random_state=seed)
     X_tune = tune_data[feature_cols].values
     y_tune = tune_data[target_cols].values
@@ -70,7 +73,6 @@ def sweep_xgboost(
         y_tune = y_tune.ravel()
 
     def _default_best_hp() -> dict:
-        # Deterministic fallback for extremely small tuning subsets where CV is impossible.
         return {
             k.replace("estimator__", ""): (
                 float(v[0]) if isinstance(v[0], np.floating) else v[0]
@@ -90,7 +92,6 @@ def sweep_xgboost(
         logger.info(f"Saved best hyperparameters to {out_path}")
         return best_hp
 
-    # Prefer GroupKFold on chromosome when at least two groups are available.
     if hasattr(tune_data.index, "get_level_values"):
         contigs = tune_data.index.get_level_values("contig").astype(str)
     else:
@@ -135,11 +136,26 @@ def sweep_xgboost(
 
     best_score = search.best_score_
     raw_params = search.best_params_
-
-    # Strip 'estimator__' prefix for MultiOutputRegressor
     best_hp = {k.replace("estimator__", ""): v for k, v in raw_params.items()}
-
     logger.info(f"Best sweep R²={best_score:.4f}  params={best_hp}")
+
+    if use_wandb:
+        import wandb
+
+        results = search.cv_results_
+        for i in range(len(results["params"])):
+            hp = {
+                k.replace("estimator__", ""): v for k, v in results["params"][i].items()
+            }
+            score = float(results["mean_test_score"][i])
+            with wandb.init(
+                project=PROJECT,
+                dir=RES_DIR,
+                reinit="finish_previous",
+                config=hp,
+                tags=["xgb-sweep"],
+            ):
+                wandb.log({"val_r2": score})
 
     out_path = Path(RES_DIR) / "best_hyperparameters.json"
     with open(out_path, "w") as f:

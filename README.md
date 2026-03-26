@@ -156,7 +156,7 @@ apptainer exec \
 
 ## Outputs
 
-Results are written to `results/<MODEL_NAME>_<TARGET>_<date>/`:
+Results are written to `results/<MODEL_NAME>_<TARGET>/`:
 
 | Path | Contents |
 |------|----------|
@@ -181,4 +181,4 @@ To run the model you need:
 ```
 
 Processed dataset is written to `<data_dir>`
-Results are written to `results/<MODEL_NAME>_<TARGET>_<date>/` relative to wherever you run the command.
+Results are written to `results/<MODEL_NAME>_<TARGET>/` relative to wherever you run the command.

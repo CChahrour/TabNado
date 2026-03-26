@@ -1,7 +1,6 @@
 import json
 import os
 import time
-from time import perf_counter
 from types import SimpleNamespace
 
 import numpy as np
@@ -377,7 +376,7 @@ def main():
 
     params = load_params(parse_params_arg())
     setup_logger(params["RES_DIR"], params["PROJECT"])
-    run_start = perf_counter()
+    run_start = time.perf_counter()
     logger.info("========== GANDALF SWEEP START ==========")
     logger.info(
         "Sweep config: project={} logging={} n_sweeps={} sweep_fraction={}".format(
@@ -420,7 +419,7 @@ def main():
     logger.info(f"Saved best hyperparameters to {hp_path}")
     logger.info(
         "========== GANDALF SWEEP END ({:.2f}s total) ==========".format(
-            perf_counter() - run_start
+            time.perf_counter() - run_start
         )
     )
 

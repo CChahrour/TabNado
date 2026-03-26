@@ -63,6 +63,8 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             n_sweeps=params["N_SWEEPS"],
             sweep_fraction=params["SWEEP_FRACTION"],
             RES_DIR=params["RES_DIR"],
+            LOGGING=params["LOGGING"],
+            PROJECT=params["PROJECT"],
         )
         logger.info(
             "[stage:sweep] END XGBoost sweep in {:.2f}s".format(
@@ -79,6 +81,8 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             train_data,
             eval_data,
             RES_DIR=params["RES_DIR"],
+            LOGGING=params["LOGGING"],
+            PROJECT=params["PROJECT"],
         )
         logger.info(
             "[stage:train] END XGBoost training in {:.2f}s".format(
@@ -146,7 +150,6 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
                     "MODEL_NAME",
                     "RES_DIR",
                     "LOGGING_DIR",
-                    "date",
                     "LOGGING",
                 )
             },

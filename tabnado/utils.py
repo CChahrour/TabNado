@@ -1,7 +1,6 @@
 import logging
 import random
 import sys
-import time
 from importlib import metadata
 from pathlib import Path
 import os
@@ -131,8 +130,7 @@ def load_params(params_path: Path | str | None = None) -> dict:
             f"Invalid model_type '{model_type}'. Use 'gandalf' or 'xgboost'."
         )
 
-    date = time.strftime("%Y-%m-%d")
-    project = f"{p['model_name']}_{p['target']}_{date}"
+    project = f"{p['model_name']}_{p['target']}"
     res_dir = f"{p['output_dir']}/{project}"
     fig_dir = f"{res_dir}/figures"
     logging_dir = f"{res_dir}/logging"
@@ -165,7 +163,6 @@ def load_params(params_path: Path | str | None = None) -> dict:
         "CHUNK_SIZE_ROWS": int(p["chunk_size_rows"])
         if "chunk_size_rows" in p and p["chunk_size_rows"] is not None
         else None,
-        "date": date,
         "PROJECT": project,
         "RES_DIR": res_dir,
         "FIG_DIR": fig_dir,

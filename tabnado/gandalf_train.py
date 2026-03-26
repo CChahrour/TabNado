@@ -1,6 +1,6 @@
 import json
 import os
-from time import perf_counter
+import time
 
 import pandas as pd
 import torch
@@ -27,11 +27,11 @@ def train_final_model(
     MODEL_NAME: str = "GANDALF",
     RES_DIR: str = "results",
     LOGGING_DIR: str | None = None,
-    date: str = "",
     LOGGING: str = "wandb",
 ) -> TabularModel:
     logger.info("Training final GANDALF model with best hyperparameters")
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
+    time_stamp = time.strftime("%Y-%m-%d_%H%M%S")
     os.makedirs(logging_dir, exist_ok=True)
     experiment_project = logging_dir if LOGGING == "tensorboard" else PROJECT
     final_model = TabularModel(
@@ -42,7 +42,7 @@ def train_final_model(
             log_logits=False,
             log_target=LOGGING,
             project_name=experiment_project,
-            run_name=f"{MODEL_NAME}_final_{date}",
+            run_name=f"{MODEL_NAME}_final_{time_stamp}",
         ),
         model_config=GANDALFConfig(
             learning_rate=best_hp.get("learning_rate", 1e-2),
@@ -99,7 +99,7 @@ def main():
 
     params = load_params(parse_params_arg())
     setup_logger(params["RES_DIR"], params["PROJECT"])
-    run_start = perf_counter()
+    run_start = time.perf_counter()
     logger.info("========== GANDALF TRAIN START ==========")
     logger.info(
         "Train config: project={} logging={} model_name={}".format(
@@ -141,7 +141,7 @@ def main():
     )
     logger.info(
         "========== GANDALF TRAIN END ({:.2f}s total) ==========".format(
-            perf_counter() - run_start
+            time.perf_counter() - run_start
         )
     )
 

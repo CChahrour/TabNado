@@ -18,6 +18,8 @@ def train_xgboost(
     train_data: pd.DataFrame,
     eval_data: pd.DataFrame,
     RES_DIR: str = "results",
+    LOGGING: str = "wandb",
+    PROJECT: str = "PROJECT_NAME",
     **kwargs,
 ) -> MultiOutputRegressor | xgb.XGBRegressor:
     """Train XGBoost model with best hyperparameters from sweep."""
@@ -61,6 +63,17 @@ def train_xgboost(
         r2 = r2_score(y_eval, y_pred, multioutput="uniform_average")
         mse = mean_squared_error(y_eval, y_pred, multioutput="uniform_average")
     logger.info(f"Eval R²={r2:.4f}  MSE={mse:.4f}")
+
+    if LOGGING == "wandb":
+        import wandb
+
+        with wandb.init(
+            project=PROJECT,
+            dir=RES_DIR,
+            reinit="finish_previous",
+            tags=["xgb-train"],
+        ):
+            wandb.log({"eval_r2": float(r2), "eval_mse": float(mse)})
 
     model_path = model_dir / "xgboost_model.joblib"
     joblib.dump(model, model_path)

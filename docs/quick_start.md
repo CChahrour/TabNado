@@ -45,7 +45,7 @@ tabnado-run --params params.yaml
 Look under:
 
 ```text
-results/<MODEL_NAME>_<TARGET>_<date>/
+results/<MODEL_NAME>_<TARGET>/
 ```
 
 You should see:

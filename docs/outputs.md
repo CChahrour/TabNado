@@ -3,7 +3,7 @@
 Outputs are organized by project run folder:
 
 ```text
-<output_dir>/<MODEL_NAME>_<TARGET>_<date>/
+<output_dir>/<MODEL_NAME>_<TARGET>/
 ```
 
 ## Core Artifacts

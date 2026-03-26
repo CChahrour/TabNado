@@ -17,7 +17,7 @@ If any required key is missing, runtime will fail while loading params.
 ## Common Keys
 
 - `n_sweeps`: Number of sweep runs
-- `logging`: `wandb` or `tensorboard`
+- `logging`: `wandb` or `tensorboard` — wandb is supported by both backends; tensorboard is GANDALF only
 
 ## Genomic/Data Keys
 
@@ -59,7 +59,7 @@ IPs listed in `exclude_ips` (default: `["AF4C", "MLLC"]`) will be filtered out.
 
 At runtime the code computes:
 
-- `PROJECT = <model_name>_<target>_<date>`
+- `PROJECT = <model_name>_<target>`
 - `RES_DIR = <output_dir>/<PROJECT>`
 - `FIG_DIR = <RES_DIR>/figures`
 - `LOGGING_DIR = <RES_DIR>/logging`
