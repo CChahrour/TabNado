@@ -18,10 +18,8 @@ def train_xgboost(
     train_data: pd.DataFrame,
     eval_data: pd.DataFrame,
     RES_DIR: str = "results",
-    LOGGING: str = "wandb",
-    PROJECT: str = "PROJECT_NAME",
-    MODEL_NAME: str = "XGBoost",
     early_stopping_rounds: int = 20,
+    wandb_cfg=None,
     **kwargs,
 ) -> list[xgb.XGBRegressor]:
     """Train one XGBRegressor per target with early stopping and eval logging."""
@@ -31,17 +29,13 @@ def train_xgboost(
     X_train = train_data[feature_cols].values
     X_eval = eval_data[feature_cols].values
 
-    use_wandb = LOGGING == "wandb"
+    use_wandb = wandb_cfg is not None
     if use_wandb:
-        import wandb
-
-        run = wandb.init(
-            project=PROJECT,
-            dir=RES_DIR,
-            reinit="finish_previous",
-            name=f"{MODEL_NAME}_final_{time.strftime('%Y-%m-%d_%H%M%S')}",
-            tags=["xgb-train"],
+        run = wandb_cfg.init_run(
+            name=f"{wandb_cfg.model_name}_final_{time.strftime('%Y-%m-%d_%H%M%S')}",
+            group="final",
             config={"early_stopping_rounds": early_stopping_rounds, **best_hp},
+            reinit="finish_previous",
         )
 
     models = []
@@ -82,7 +76,7 @@ def train_xgboost(
 
         if use_wandb:
             for rnd, (tr_rmse, ev_rmse) in enumerate(zip(train_rmse, eval_rmse)):
-                wandb.log(
+                run.log(
                     {
                         f"{col}/train_rmse": tr_rmse,
                         f"{col}/eval_rmse": ev_rmse,
@@ -100,7 +94,7 @@ def train_xgboost(
     logger.info(f"Eval R²={r2:.4f}  MSE={mse:.4f}")
 
     if use_wandb:
-        wandb.log({"eval_r2": r2, "eval_mse": mse})
+        run.log({"eval_r2": r2, "eval_mse": mse})
         run.finish()
 
     model_path = model_dir / "xgboost_model.joblib"
@@ -140,6 +134,11 @@ def main():
     _, _, target_cols, feature_cols, train_data, eval_data, _ = load_data(
         **{k: params[k] for k in LOAD_DATA_PARAMS}
     )
+    wandb_cfg = None
+    if params["LOGGING"] == "wandb":
+        from tabnado.wandb import WandbConfig
+
+        wandb_cfg = WandbConfig.from_params(params)
     train_xgboost(
         best_hp,
         feature_cols,
@@ -147,9 +146,7 @@ def main():
         train_data,
         eval_data,
         RES_DIR=params["RES_DIR"],
-        LOGGING=params["LOGGING"],
-        PROJECT=params["PROJECT"],
-        MODEL_NAME=params["MODEL_NAME"],
+        wandb_cfg=wandb_cfg,
     )
 
 

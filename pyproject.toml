@@ -29,6 +29,7 @@ dependencies = [
     "umap-learn==0.5.11",
     "tensorboard",
     "wandb==0.25.1",
+    "wandb-workspaces==0.3.8",
     "xgboost>=2.0.0",
     "joblib",
 ]

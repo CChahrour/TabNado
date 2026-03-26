@@ -19,8 +19,7 @@ def sweep_xgboost(
     sweep_fraction: float = 0.1,
     RES_DIR: str = "results",
     seed: int = 42,
-    LOGGING: str = "wandb",
-    PROJECT: str = "PROJECT_NAME",
+    wandb_cfg=None,
     **kwargs,
 ) -> dict:
     """
@@ -31,7 +30,7 @@ def sweep_xgboost(
     Returns best_hp dict and saves best_hyperparameters.json to RES_DIR.
     """
     Path(RES_DIR).mkdir(parents=True, exist_ok=True)
-    use_wandb = LOGGING == "wandb"
+    use_wandb = wandb_cfg is not None
 
     base = xgb.XGBRegressor(
         objective="reg:squarederror",
@@ -156,13 +155,11 @@ def sweep_xgboost(
             hp = {
                 k.replace("estimator__", ""): v for k, v in results["params"][i].items()
             }
-            with wandb.init(
-                project=PROJECT,
-                dir=RES_DIR,
-                reinit="finish_previous",
-                name=f"XGBoost_sweep_{sweep_ts}_{i}",
+            with wandb_cfg.init_run(
+                name=f"{wandb_cfg.model_name}_sweep_{sweep_ts}_{i}",
+                group="sweep",
                 config=hp,
-                tags=["xgb-sweep"],
+                reinit="finish_previous",
             ):
                 score = float(results["mean_test_score"][i])
                 if not np.isnan(score):
@@ -203,6 +200,11 @@ def main():
         **{k: params[k] for k in LOAD_DATA_PARAMS}
     )
 
+    wandb_cfg = None
+    if params["LOGGING"] == "wandb":
+        from tabnado.wandb import WandbConfig
+
+        wandb_cfg = WandbConfig.from_params(params)
     sweep_xgboost(
         feature_cols=feature_cols,
         target_cols=target_cols,
@@ -210,6 +212,5 @@ def main():
         n_sweeps=params["N_SWEEPS"],
         sweep_fraction=params["SWEEP_FRACTION"],
         RES_DIR=params["RES_DIR"],
-        LOGGING=params["LOGGING"],
-        PROJECT=params["PROJECT"],
+        wandb_cfg=wandb_cfg,
     )

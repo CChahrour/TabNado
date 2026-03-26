@@ -33,8 +33,11 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         f"Run summary: project={params['PROJECT']} logging={params['LOGGING']} target={params['TARGET']} n_sweeps={params['N_SWEEPS']} sweep_fraction={params['SWEEP_FRACTION']}"
     )
     logger.info(f"Logging directory: {params['LOGGING_DIR']}")
+    wandb_cfg = None
     if params["LOGGING"] == "wandb":
-        os.environ["WANDB_DIR"] = params["RES_DIR"]
+        from tabnado.wandb import WandbConfig
+
+        wandb_cfg = WandbConfig.from_params(params)
     elif params["LOGGING"] == "tensorboard":
         os.environ["TENSORBOARD_DIR"] = params["LOGGING_DIR"]
 
@@ -63,8 +66,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             n_sweeps=params["N_SWEEPS"],
             sweep_fraction=params["SWEEP_FRACTION"],
             RES_DIR=params["RES_DIR"],
-            LOGGING=params["LOGGING"],
-            PROJECT=params["PROJECT"],
+            wandb_cfg=wandb_cfg,
         )
         logger.info(
             "[stage:sweep] END XGBoost sweep in {:.2f}s".format(
@@ -81,9 +83,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             train_data,
             eval_data,
             RES_DIR=params["RES_DIR"],
-            LOGGING=params["LOGGING"],
-            PROJECT=params["PROJECT"],
-            MODEL_NAME=params.get("MODEL_NAME", "XGBoost"),
+            wandb_cfg=wandb_cfg,
         )
         logger.info(
             "[stage:train] END XGBoost training in {:.2f}s".format(
@@ -110,7 +110,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             SWEEP_FRACTION=params["SWEEP_FRACTION"],
             LOGGING=params["LOGGING"],
             LOGGING_DIR=params["LOGGING_DIR"],
-            PROJECT=params["PROJECT"],
+            wandb_cfg=wandb_cfg,
         )
         logger.info(
             "[stage:sweep] END hyperparameter sweep in {:.2f}s (sweep_id={})".format(
@@ -122,9 +122,8 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         logger.info("[stage:sweep] START best-hp selection")
         best_hp = get_best_hp_from_sweep(
             sweep_id,
-            PROJECT=params["PROJECT"],
             RES_DIR=params["RES_DIR"],
-            LOGGING=params["LOGGING"],
+            wandb_cfg=wandb_cfg,
         )
         logger.info(f"Best hyperparameters: {best_hp}")
         best_hp_path = f"{params['RES_DIR']}/best_hyperparameters.json"
@@ -144,16 +143,10 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             target_cols,
             train_data,
             eval_data,
-            **{
-                k: params[k]
-                for k in (
-                    "PROJECT",
-                    "MODEL_NAME",
-                    "RES_DIR",
-                    "LOGGING_DIR",
-                    "LOGGING",
-                )
-            },
+            RES_DIR=params["RES_DIR"],
+            LOGGING=params["LOGGING"],
+            LOGGING_DIR=params["LOGGING_DIR"],
+            wandb_cfg=wandb_cfg,
         )
         logger.info(
             "[stage:train] END final model training in {:.2f}s".format(
@@ -163,6 +156,15 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
 
     stage_start = perf_counter()
     logger.info("[stage:evaluate] START evaluation/umap")
+    # pytorch_tabular's Lightning WandbLogger calls wandb.finish() when training ends,
+    # so we open a fresh run here for evaluate/shap figures and metrics.
+    _wandb_run = None
+    if wandb_cfg is not None:
+        _wandb_run = wandb_cfg.init_run(
+            name=f"{wandb_cfg.model_name}_eval_{wandb_cfg.target}",
+            group="evaluate",
+        )
+
     evaluate_model(
         final_model,
         test_data,
@@ -171,6 +173,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         FIG_DIR=params["FIG_DIR"],
         RES_DIR=params["RES_DIR"],
         model_type=model_type,
+        wandb_run=_wandb_run,
     )
     compute_umap_embeddings(
         final_model,
@@ -181,6 +184,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         RES_DIR=params["RES_DIR"],
         target=params["TARGET"],
         model_type=model_type,
+        wandb_run=_wandb_run,
     )
     logger.info(
         "[stage:evaluate] END evaluation/umap in {:.2f}s".format(
@@ -201,6 +205,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             target_cols,
             RES_DIR=params["RES_DIR"],
             FIG_DIR=params["FIG_DIR"],
+            wandb_run=_wandb_run,
         )
     else:
         from tabnado.gandalf_shap import compute_gandalf_shap
@@ -213,10 +218,25 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             target_cols,
             RES_DIR=params["RES_DIR"],
             FIG_DIR=params["FIG_DIR"],
+            wandb_run=_wandb_run,
         )
     logger.info(
         "[stage:shap] END shap analysis in {:.2f}s".format(perf_counter() - stage_start)
     )
+    if _wandb_run is not None:
+        _wandb_run_id = _wandb_run.id
+        _wandb_run.finish()
+        from tabnado.wandb import create_eval_report
+
+        try:
+            report_url = create_eval_report(
+                wandb_cfg=wandb_cfg,
+                run_id=_wandb_run_id,
+                target_cols=target_cols,
+            )
+            logger.info(f"W&B report: {report_url}")
+        except Exception as e:
+            logger.warning(f"W&B report creation failed (skipping): {e}")
     logger.info(
         "========== PIPELINE END ({:.2f}s total) ==========".format(
             perf_counter() - pipeline_start

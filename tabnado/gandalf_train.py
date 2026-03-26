@@ -23,35 +23,36 @@ def train_final_model(
     target_cols: list[str],
     train_data: pd.DataFrame,
     eval_data: pd.DataFrame,
-    PROJECT: str = "GANDALF_PROJECT",
-    MODEL_NAME: str = "GANDALF",
     RES_DIR: str = "results",
     LOGGING_DIR: str | None = None,
-    LOGGING: str = "wandb",
+    LOGGING: str = "none",
+    wandb_cfg=None,
 ) -> TabularModel:
     logger.info("Training final GANDALF model with best hyperparameters")
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
     os.makedirs(logging_dir, exist_ok=True)
-    experiment_project = logging_dir if LOGGING == "tensorboard" else PROJECT
-    # Optionally initialize wandb with custom config if using wandb
-    if LOGGING == "wandb":
-        import wandb
-
-        wandb.init(
-            project=experiment_project,
-            name=f"{MODEL_NAME}_final_{time.strftime('%Y-%m-%d_%H%M')}",
-            group="final",
-            config=best_hp,
-        )
+    use_wandb = wandb_cfg is not None
+    run_name = (
+        f"{wandb_cfg.model_name}_final_{time.strftime('%Y-%m-%d_%H%M')}"
+        if use_wandb
+        else f"GANDALF_final_{time.strftime('%Y-%m-%d_%H%M')}"
+    )
+    experiment_project = (
+        logging_dir
+        if LOGGING == "tensorboard"
+        else (wandb_cfg.project if use_wandb else logging_dir)
+    )
+    if use_wandb:
+        wandb_cfg.init_run(name=run_name, group="final", config=best_hp)
     final_model = TabularModel(
         data_config=_make_data_config(feature_cols, target_cols),
         experiment_config=ExperimentConfig(
             exp_log_freq=1,
             exp_watch=None,
             log_logits=False,
-            log_target=LOGGING,
+            log_target="wandb" if use_wandb else LOGGING,
             project_name=experiment_project,
-            run_name=f"{MODEL_NAME}_final_{time.strftime('%Y-%m-%d_%H%M')}",
+            run_name=run_name,
         ),
         model_config=GANDALFConfig(
             learning_rate=best_hp.get("learning_rate", 1e-2),
@@ -100,7 +101,7 @@ def train_final_model(
     final_model.save_model(os.path.join(RES_DIR, "final_model"), inference_only=False)
     logger.info(f"Final GANDALF model saved to {RES_DIR}/final_model")
 
-    if LOGGING == "wandb":
+    if use_wandb:
         log_macro(final_model, target_cols)
     return final_model
 
@@ -118,8 +119,11 @@ def main():
             params["PROJECT"], params["LOGGING"], params["MODEL_NAME"]
         )
     )
+    wandb_cfg = None
     if params["LOGGING"] == "wandb":
-        os.environ["WANDB_DIR"] = params["RES_DIR"]
+        from tabnado.wandb import WandbConfig
+
+        wandb_cfg = WandbConfig.from_params(params)
 
     hp_path = f"{params['RES_DIR']}/best_hyperparameters.json"
     if not os.path.exists(hp_path):
@@ -139,16 +143,10 @@ def main():
         target_cols,
         train_data,
         eval_data,
-        **{
-            k: params[k]
-            for k in (
-                "PROJECT",
-                "MODEL_NAME",
-                "RES_DIR",
-                "LOGGING_DIR",
-                "LOGGING",
-            )
-        },
+        RES_DIR=params["RES_DIR"],
+        LOGGING=params["LOGGING"],
+        LOGGING_DIR=params["LOGGING_DIR"],
+        wandb_cfg=wandb_cfg,
     )
     logger.info(
         "========== GANDALF TRAIN END ({:.2f}s total) ==========".format(

@@ -21,6 +21,7 @@ def compute_xgb_shap(
     RES_DIR: str = "results",
     FIG_DIR: str = "figures",
     tile_size: int = 100,
+    wandb_run=None,
 ):
     """Compute SHAP values for XGBoost model using TreeExplainer."""
     figure_style()
@@ -133,7 +134,12 @@ def compute_xgb_shap(
     cb.set_label("Mean |SHAP|", fontsize=9)
     clustermap_path = f"{FIG_DIR}/shap_clustermap.png"
     g.savefig(clustermap_path, bbox_inches="tight", dpi=120)
+    plt.close(g.figure)
     logger.info(f"Saved SHAP clustermap: {clustermap_path}")
+    if wandb_run is not None:
+        import wandb
+
+        wandb_run.log({"shap/clustermap": wandb.Image(clustermap_path)})
 
     # === SPATIAL SHAP ANALYSIS ===
     # Aggregate SHAP values by genomic offset from TSS
@@ -145,6 +151,7 @@ def compute_xgb_shap(
         SHAP_DIR,
         FIG_DIR,
         tile_size,
+        wandb_run=wandb_run,
     )
 
 
@@ -172,6 +179,7 @@ def _plot_spatial_shap(
     SHAP_DIR: str = "results/shap",
     FIG_DIR: str = "figures",
     tile_size: int = 100,
+    wandb_run=None,
 ):
     """
     Create spatial SHAP visualizations aggregating importance by TSS offset.
@@ -259,6 +267,13 @@ def _plot_spatial_shap(
         fig.savefig(heatmap_path, bbox_inches="tight", dpi=100)
         plt.close(fig)
         logger.info(f"Saved spatial heatmap: {heatmap_path}")
+        if wandb_run is not None:
+            import wandb
+
+            safe_col = target_col.replace("/", "_")
+            wandb_run.log(
+                {f"shap/spatial_heatmap_{safe_col}": wandb.Image(heatmap_path)}
+            )
 
         # === Line plot: one line per cofactor, coloured by feature ===
         palette = sns.color_palette("tab20", n_colors=len(cofactor_names))
@@ -280,6 +295,11 @@ def _plot_spatial_shap(
         fig.savefig(line_path, bbox_inches="tight", dpi=100)
         plt.close(fig)
         logger.info(f"Saved offset importance profile: {line_path}")
+        if wandb_run is not None:
+            import wandb
+
+            safe_col = target_col.replace("/", "_")
+            wandb_run.log({f"shap/offset_line_{safe_col}": wandb.Image(line_path)})
 
 
 def main():

@@ -23,6 +23,7 @@ def evaluate_model(
     FIG_DIR: str = "figures",
     RES_DIR: str = "results",
     model_type: str = "gandalf",
+    wandb_run=None,
 ):
     figure_style()
     logger.info("Evaluating final model on test set")
@@ -73,6 +74,17 @@ def evaluate_model(
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=4)
 
+    if wandb_run is not None:
+        flat = {
+            "eval/R2_macro": metrics["R2_macro"],
+            "eval/MSE_macro": metrics["MSE_macro"],
+            "eval/MAE_macro": metrics["MAE_macro"],
+        }
+        for col in target_cols:
+            for stat in ("R2", "MSE", "MAE", "Rho"):
+                flat[f"eval/{col}/{stat}"] = metrics[col][stat]
+        wandb_run.log(flat)
+
     for col in target_cols:
         fig, ax = plt.subplots(figsize=(5, 4))
         ax.scatter(test_data[col], pred_df[col], s=2, alpha=0.3, rasterized=True)
@@ -85,6 +97,10 @@ def evaluate_model(
         fig.savefig(scatter_path)
         plt.close(fig)
         logger.info(f"Saved evaluation scatter plot: {scatter_path}")
+        if wandb_run is not None:
+            import wandb
+
+            wandb_run.log({f"eval/scatter_{col}": wandb.Image(scatter_path)})
 
 
 def compute_umap_embeddings(
@@ -96,6 +112,7 @@ def compute_umap_embeddings(
     RES_DIR: str = "results",
     target: str = "",
     model_type: str = "gandalf",
+    wandb_run=None,
 ):
     if model_type == "xgboost":
         logger.info("Skipping UMAP: not supported for XGBoost backend")
@@ -161,7 +178,12 @@ def compute_umap_embeddings(
     ax.set_title("GANDALF backbone embeddings")
     umap_fig_path = f"{FIG_DIR}/embeddings_umap.png"
     fig.savefig(umap_fig_path)
+    plt.close(fig)
     logger.info(f"Saved UMAP figure: {umap_fig_path}")
+    if wandb_run is not None:
+        import wandb
+
+        wandb_run.log({"eval/umap": wandb.Image(umap_fig_path)})
 
 
 def main():

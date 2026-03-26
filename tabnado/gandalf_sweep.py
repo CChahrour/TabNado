@@ -76,16 +76,20 @@ def sweep_train(
     FIG_DIR: str = "figures",
     RES_DIR: str = "results",
     SWEEP_FRACTION: float = 0.1,
-    PROJECT: str = "PROJECT_NAME",
     LOGGING_DIR: str | None = None,
     SWEEP_ID: str | None = None,
     hp_config: dict | None = None,
-    LOGGING: str = "wandb",
+    LOGGING: str = "none",
+    wandb_cfg=None,
 ):
-    use_wandb = LOGGING == "wandb"
+    use_wandb = wandb_cfg is not None
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
     os.makedirs(logging_dir, exist_ok=True)
-    experiment_project = logging_dir if LOGGING == "tensorboard" else PROJECT
+    experiment_project = (
+        logging_dir
+        if LOGGING == "tensorboard"
+        else (wandb_cfg.project if use_wandb else logging_dir)
+    )
 
     run_name = f"GANDALF_sweep_{time.strftime('%Y-%m-%d_%H%M')}"
     sweep_root = (
@@ -114,27 +118,6 @@ def sweep_train(
     )
 
     def _fit_and_eval(config_obj):
-        # Optionally initialize wandb with custom config if using wandb
-        if LOGGING == "wandb":
-            import wandb
-
-            # Always convert config_obj to dict for wandb config
-            if hasattr(config_obj, "__dict__"):
-                wandb_config = vars(config_obj)
-            elif isinstance(config_obj, dict):
-                wandb_config = config_obj
-            else:
-                # fallback: try to convert to dict
-                try:
-                    wandb_config = dict(config_obj)
-                except Exception:
-                    wandb_config = {}
-            wandb.init(
-                project=experiment_project,
-                name=run_name,
-                group="sweep",
-                config=wandb_config,
-            )
         model = TabularModel(
             data_config=_make_data_config(feature_cols, sweep_target_cols),
             experiment_config=ExperimentConfig(
@@ -225,7 +208,13 @@ def sweep_train(
         with open(os.path.join(run_dir, "metrics.json"), "w") as f:
             json.dump(test_metrics, f, indent=4)
         with open(os.path.join(run_dir, "hyperparameters.json"), "w") as f:
-            json.dump(vars(config_obj), f, indent=4)
+            hp_keys_to_save = list(create_sweep_dict()["parameters"].keys())
+            hp_dict = {
+                k: getattr(config_obj, k)
+                for k in hp_keys_to_save
+                if hasattr(config_obj, k)
+            }
+            json.dump(hp_dict, f, indent=4)
 
         if use_wandb:
             wandb.log(test_metrics)
@@ -243,12 +232,11 @@ def sweep_train(
         assert config_dict is not None
         return _fit_and_eval(SimpleNamespace(**config_dict))
 
-    with wandb.init(
-        dir=run_dir,
-        reinit="finish_previous",
-        project=PROJECT,
+    with wandb_cfg.init_run(
         name=run_name,
         group="sweep",
+        reinit="finish_previous",
+        dir_override=run_dir,
     ) as run:
         return _fit_and_eval(run.config)
 
@@ -294,18 +282,16 @@ def start_sweep_and_run(
     count,
     RES_DIR: str = "results",
     SWEEP_FRACTION: float = 0.1,
-    LOGGING: str = "wandb",
+    LOGGING: str = "none",
     LOGGING_DIR: str | None = None,
-    entity: str | None = None,
-    PROJECT: str = "PROJECT_NAME",
+    wandb_cfg=None,
 ) -> str:
-    use_wandb = LOGGING == "wandb"
+    use_wandb = wandb_cfg is not None
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
     os.makedirs(logging_dir, exist_ok=True)
 
     sweep_dir = os.path.join(RES_DIR, "sweep")
     os.makedirs(sweep_dir, exist_ok=True)
-    os.environ.setdefault("WANDB_DIR", RES_DIR)
 
     if not use_wandb:
         sweep_id = f"local-{time.strftime('%Y-%m-%d_%H%M')}"
@@ -327,11 +313,11 @@ def start_sweep_and_run(
                 target_cols,
                 RES_DIR=RES_DIR,
                 SWEEP_FRACTION=SWEEP_FRACTION,
-                PROJECT=PROJECT,
                 LOGGING_DIR=logging_dir,
                 SWEEP_ID=sweep_id,
                 hp_config=hp,
                 LOGGING=LOGGING,
+                wandb_cfg=wandb_cfg,
             )
             if metrics is not None and metrics["test_r2_macro"] > best_score:
                 best_score = metrics["test_r2_macro"]
@@ -343,7 +329,9 @@ def start_sweep_and_run(
         _LOCAL_SWEEP_BEST_HP_CACHE[sweep_id] = best_hp
         return sweep_id
 
-    sweep_id = wandb.sweep(sweep=create_sweep_dict(), entity=entity, project=PROJECT)
+    sweep_id = wandb.sweep(
+        sweep=create_sweep_dict(), entity=wandb_cfg.entity, project=wandb_cfg.project
+    )
     logger.info(f"Created sweep: {sweep_id}")
     wandb.agent(
         sweep_id,
@@ -355,10 +343,10 @@ def start_sweep_and_run(
             target_cols,
             RES_DIR=RES_DIR,
             SWEEP_FRACTION=SWEEP_FRACTION,
-            PROJECT=PROJECT,
             LOGGING_DIR=logging_dir,
             SWEEP_ID=sweep_id,
             LOGGING=LOGGING,
+            wandb_cfg=wandb_cfg,
         ),
         count=count,
     )
@@ -367,13 +355,12 @@ def start_sweep_and_run(
 
 def get_best_hp_from_sweep(
     sweep_id: str,
-    entity: str | None = None,
-    PROJECT: str = "PROJECT_NAME",
     RES_DIR: str = "results",
-    LOGGING: str = "wandb",
+    wandb_cfg=None,
 ) -> dict:
     """Fetch the hyperparameters of the best-performing run in a sweep."""
-    if LOGGING != "wandb":
+    use_wandb = wandb_cfg is not None
+    if not use_wandb:
         cached = _LOCAL_SWEEP_BEST_HP_CACHE.get(sweep_id)
         if cached is not None:
             return cached
@@ -392,8 +379,11 @@ def get_best_hp_from_sweep(
     # Try wandb API first; fall back to local sweep run directories.
     try:
         api = wandb.Api()
+        entity = wandb_cfg.entity
         sweep_path = (
-            f"{entity}/{PROJECT}/{sweep_id}" if entity else f"{PROJECT}/{sweep_id}"
+            f"{entity}/{wandb_cfg.project}/{sweep_id}"
+            if entity
+            else f"{wandb_cfg.project}/{sweep_id}"
         )
         sweep = api.sweep(sweep_path)
         best_run = sweep.best_run()
@@ -454,8 +444,11 @@ def main():
             params["SWEEP_FRACTION"],
         )
     )
+    wandb_cfg = None
     if params["LOGGING"] == "wandb":
-        os.environ["WANDB_DIR"] = params["RES_DIR"]
+        from tabnado.wandb import WandbConfig
+
+        wandb_cfg = WandbConfig.from_params(params)
 
     _, _, target_cols, feature_cols, train_data, eval_data, test_data = load_data(
         **{k: params[k] for k in LOAD_DATA_PARAMS}
@@ -472,13 +465,12 @@ def main():
         SWEEP_FRACTION=params["SWEEP_FRACTION"],
         LOGGING=params["LOGGING"],
         LOGGING_DIR=params["LOGGING_DIR"],
-        PROJECT=params["PROJECT"],
+        wandb_cfg=wandb_cfg,
     )
     best_hp = get_best_hp_from_sweep(
         sweep_id,
-        PROJECT=params["PROJECT"],
         RES_DIR=params["RES_DIR"],
-        LOGGING=params["LOGGING"],
+        wandb_cfg=wandb_cfg,
     )
     logger.info(f"Best hyperparameters: {best_hp}")
     hp_path = f"{params['RES_DIR']}/best_hyperparameters.json"
