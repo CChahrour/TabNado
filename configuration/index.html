@@ -964,6 +964,7 @@
 <li><code>window_size</code>: Genomic window size around TSS in bp</li>
 <li><code>step_size</code>: Step size for sliding window in bp</li>
 <li><code>tile_size</code>: Size of each tile in bp; set larger than <code>step_size</code> for overlapping tiles</li>
+<li><code>chunk_size_rows</code>: <strong>optional</strong> — limit the number of rows processed per chunk during signal extraction; useful for memory-constrained environments. Defaults to the full dataset if omitted.</li>
 </ul>
 <h2 id="sample-naming-convention">Sample Naming Convention<a class="headerlink" href="#sample-naming-convention" title="Permanent link">&para;</a></h2>
 <p>Sample names in the QuantNado dataset must follow a specific format to be parsed correctly:</p>

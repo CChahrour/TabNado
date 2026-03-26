@@ -933,6 +933,8 @@
 <span class="nt">prefixes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;CAT&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;ChIP&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;CM&quot;</span><span class="p p-Indicator">]</span>
 <span class="nt">window_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3000</span>
 <span class="nt">step_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
+<span class="nt">tile_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
+<span class="c1"># chunk_size_rows: 1000000  # optional: limit rows per chunk for memory-constrained loading</span>
 </code></pre></div>
 <h2 id="2-run-full-pipeline">2. Run Full Pipeline<a class="headerlink" href="#2-run-full-pipeline" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>tabnado-run<span class="w"> </span>--params<span class="w"> </span>params.yaml
@@ -947,8 +949,11 @@
 <li><code>final_model/</code></li>
 <li><code>figures/scatter_test.png</code></li>
 <li><code>figures/embeddings_umap.png</code></li>
-<li><code>shap_mean_abs.csv</code></li>
-<li><code>figures/shap_*.png</code></li>
+<li><code>shap/shap_mean_abs.csv</code></li>
+<li><code>figures/shap_clustermap.png</code></li>
+<li><code>shap/spatial_shap_by_offset_&lt;target&gt;.csv</code></li>
+<li><code>figures/shap_spatial_heatmap_&lt;target&gt;.png</code></li>
+<li><code>figures/shap_offset_line_&lt;target&gt;.png</code></li>
 </ul>
 <h2 id="4-run-on-slurm-with-a-container">4. Run on Slurm with a Container<a class="headerlink" href="#4-run-on-slurm-with-a-container" title="Permanent link">&para;</a></h2>
 <p>Pull the image once on the cluster login node:</p>
