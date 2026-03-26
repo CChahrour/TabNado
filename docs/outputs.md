@@ -22,10 +22,11 @@ Outputs are organized by project run folder:
 
 ## SHAP Artifacts
 
-- `shap_mean_abs.csv`: Mean absolute SHAP by feature and target
-- `figures/shap_clustermap.png`: SHAP clustermap
-- `figures/shap_top20_<target>.png`: Top-20 SHAP features per target
-- `figures/shap_beeswarm_<target>.png`: SHAP beeswarm per target
+- `shap/shap_mean_abs.csv`: Mean absolute SHAP by feature and target
+- `figures/shap_clustermap.png`: Mean |SHAP| heatmap across cofactors and targets
+- `shap/spatial_shap_by_offset_<target>.csv`: Spatial SHAP summary by genomic offset per target
+- `figures/shap_spatial_heatmap_<target>.png`: Spatial SHAP heatmap (cofactor × offset) per target
+- `figures/shap_offset_line_<target>.png`: SHAP importance profile by genomic offset per target
 
 ## Logs
 

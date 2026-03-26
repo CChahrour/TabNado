@@ -69,7 +69,7 @@ Example:
 
 ```yaml
 target: MLLN
-model_name: GANDALF or XGBoost
+model_name: GANDALF
 sweep_fraction: 0.2
 gtf_file: data/regions/gencode.v49.annotation.gtf
 eval_chr: chr8
@@ -165,12 +165,11 @@ Results are written to `results/<MODEL_NAME>_<TARGET>_<date>/`:
 | `final_model/` | Saved backend model (for example `xgboost_model.joblib` for XGBoost) |
 | `figures/scatter_test.png` | True vs predicted scatter |
 | `figures/embeddings_umap.png` | UMAP embedding output |
-| `figures/shap_clustermap.png` | Mean \|SHAP\| heatmap |
-| `shap/spatial_shap_by_offset_<target>.csv` | Spatial SHAP summary by offset |
-| `figures/shap_spatial_heatmap_<target>.png` | Spatial SHAP heatmap per target |
-| `figures/shap_offset_line_<target>.png` | SHAP importance profile by genomic offset |
-| `figures/shap_top20_<target>.png` | Top 20 SHAP features per target (GANDALF backend) |
-| `figures/shap_beeswarm_<target>.png` | SHAP beeswarm per target (GANDALF backend) |
+| `figures/shap_clustermap.png` | Mean \|SHAP\| heatmap across cofactors and targets |
+| `shap/shap_mean_abs.csv` | Mean absolute SHAP by feature and target |
+| `shap/spatial_shap_by_offset_<target>.csv` | Spatial SHAP summary by genomic offset per target |
+| `figures/shap_spatial_heatmap_<target>.png` | Spatial SHAP heatmap (cofactor × offset) per target |
+| `figures/shap_offset_line_<target>.png` | SHAP importance profile by genomic offset per target |
 
 ## Required files
 

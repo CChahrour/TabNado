@@ -30,6 +30,8 @@ exclude_ips: ["AF4C", "MLLC"]
 prefixes: ["CAT", "ChIP", "CM"]
 window_size: 3000
 step_size: 100
+tile_size: 100
+# chunk_size_rows: 1000000  # optional: limit rows per chunk for memory-constrained loading
 ```
 
 ## 2. Run Full Pipeline
@@ -52,8 +54,11 @@ You should see:
 - `final_model/`
 - `figures/scatter_test.png`
 - `figures/embeddings_umap.png`
-- `shap_mean_abs.csv`
-- `figures/shap_*.png`
+- `shap/shap_mean_abs.csv`
+- `figures/shap_clustermap.png`
+- `shap/spatial_shap_by_offset_<target>.csv`
+- `figures/shap_spatial_heatmap_<target>.png`
+- `figures/shap_offset_line_<target>.png`
 
 ## 4. Run on Slurm with a Container
 

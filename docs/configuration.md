@@ -33,6 +33,7 @@ If any required key is missing, runtime will fail while loading params.
 - `window_size`: Genomic window size around TSS in bp
 - `step_size`: Step size for sliding window in bp
 - `tile_size`: Size of each tile in bp; set larger than `step_size` for overlapping tiles
+- `chunk_size_rows`: **optional** — limit the number of rows processed per chunk during signal extraction; useful for memory-constrained environments. Defaults to the full dataset if omitted.
 
 ## Sample Naming Convention
 
