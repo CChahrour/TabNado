@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -152,6 +153,7 @@ def sweep_xgboost(
                 project=PROJECT,
                 dir=RES_DIR,
                 reinit="finish_previous",
+                name=f"sweep_{time.strftime('%Y-%m-%d')}_{i}",
                 config=hp,
                 tags=["xgb-sweep"],
             ):

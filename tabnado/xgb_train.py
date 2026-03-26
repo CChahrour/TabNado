@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from pathlib import Path
 
 import joblib
@@ -20,6 +21,7 @@ def train_xgboost(
     RES_DIR: str = "results",
     LOGGING: str = "wandb",
     PROJECT: str = "PROJECT_NAME",
+    MODEL_NAME: str = "XGBoost",
     **kwargs,
 ) -> MultiOutputRegressor | xgb.XGBRegressor:
     """Train XGBoost model with best hyperparameters from sweep."""
@@ -71,6 +73,7 @@ def train_xgboost(
             project=PROJECT,
             dir=RES_DIR,
             reinit="finish_previous",
+            name=f"{MODEL_NAME}_final_{time.strftime('%Y-%m-%d_%H%M%S')}",
             tags=["xgb-train"],
         ):
             wandb.log({"eval_r2": float(r2), "eval_mse": float(mse)})

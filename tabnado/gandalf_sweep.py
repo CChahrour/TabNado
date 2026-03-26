@@ -75,7 +75,6 @@ def sweep_train(
     FIG_DIR: str = "figures",
     RES_DIR: str = "results",
     SWEEP_FRACTION: float = 0.1,
-    MODEL_NAME: str = "GANDALF_Sweep",
     PROJECT: str = "PROJECT_NAME",
     LOGGING_DIR: str | None = None,
     SWEEP_ID: str | None = None,
@@ -87,8 +86,7 @@ def sweep_train(
     os.makedirs(logging_dir, exist_ok=True)
     experiment_project = logging_dir if LOGGING == "tensorboard" else PROJECT
 
-    time_stamp = time.strftime("%Y-%m-%d_%H%M%S")
-    run_name = f"{MODEL_NAME}_{time_stamp}"
+    run_name = f"sweep_{time.strftime('%Y-%m-%d')}"
     sweep_root = (
         os.path.join(RES_DIR, "sweep", SWEEP_ID)
         if SWEEP_ID

@@ -83,6 +83,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             RES_DIR=params["RES_DIR"],
             LOGGING=params["LOGGING"],
             PROJECT=params["PROJECT"],
+            MODEL_NAME=params.get("MODEL_NAME", "XGBoost"),
         )
         logger.info(
             "[stage:train] END XGBoost training in {:.2f}s".format(

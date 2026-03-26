@@ -31,7 +31,6 @@ def train_final_model(
 ) -> TabularModel:
     logger.info("Training final GANDALF model with best hyperparameters")
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
-    time_stamp = time.strftime("%Y-%m-%d_%H%M%S")
     os.makedirs(logging_dir, exist_ok=True)
     experiment_project = logging_dir if LOGGING == "tensorboard" else PROJECT
     final_model = TabularModel(
@@ -42,7 +41,7 @@ def train_final_model(
             log_logits=False,
             log_target=LOGGING,
             project_name=experiment_project,
-            run_name=f"{MODEL_NAME}_final_{time_stamp}",
+            run_name=f"final_{time.strftime('%Y-%m-%d')}",
         ),
         model_config=GANDALFConfig(
             learning_rate=best_hp.get("learning_rate", 1e-2),
