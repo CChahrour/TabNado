@@ -138,26 +138,41 @@ def sweep_xgboost(
     best_score = search.best_score_
     raw_params = search.best_params_
     best_hp = {k.replace("estimator__", ""): v for k, v in raw_params.items()}
-    logger.info(f"Best sweep R²={best_score:.4f}  params={best_hp}")
+    if np.isnan(best_score):
+        logger.warning(
+            "XGBoost sweep: all CV scores are NaN — check that sweep_fraction produces "
+            "enough samples per fold. Falling back to default hyperparameters."
+        )
+        best_hp = _default_best_hp()
+    else:
+        logger.info(f"Best sweep R²={best_score:.4f}  params={best_hp}")
 
     if use_wandb:
         import wandb
 
+        sweep_ts = time.strftime("%Y-%m-%d_%H%M%S")
         results = search.cv_results_
         for i in range(len(results["params"])):
             hp = {
                 k.replace("estimator__", ""): v for k, v in results["params"][i].items()
             }
-            score = float(results["mean_test_score"][i])
             with wandb.init(
                 project=PROJECT,
                 dir=RES_DIR,
                 reinit="finish_previous",
-                name=f"sweep_{time.strftime('%Y-%m-%d')}_{i}",
+                name=f"XGBoost_sweep_{sweep_ts}_{i}",
                 config=hp,
                 tags=["xgb-sweep"],
             ):
-                wandb.log({"val_r2": score})
+                score = float(results["mean_test_score"][i])
+                if not np.isnan(score):
+                    wandb.log(
+                        {
+                            "val_r2": score,
+                            "val_r2_std": float(results["std_test_score"][i]),
+                            "fit_time": float(results["mean_fit_time"][i]),
+                        }
+                    )
 
     out_path = Path(RES_DIR) / "best_hyperparameters.json"
     with open(out_path, "w") as f:
@@ -170,3 +185,31 @@ def sweep_xgboost(
     logger.info(f"Saved best hyperparameters to {out_path}")
 
     return best_hp
+
+
+def main():
+    from tabnado.data import load_data
+    from tabnado.utils import (
+        LOAD_DATA_PARAMS,
+        load_params,
+        parse_params_arg,
+        setup_logger,
+    )
+
+    params = load_params(parse_params_arg())
+    setup_logger(params["RES_DIR"], params["PROJECT"])
+
+    _, _, target_cols, feature_cols, train_data, _, _ = load_data(
+        **{k: params[k] for k in LOAD_DATA_PARAMS}
+    )
+
+    sweep_xgboost(
+        feature_cols=feature_cols,
+        target_cols=target_cols,
+        train_data=train_data,
+        n_sweeps=params["N_SWEEPS"],
+        sweep_fraction=params["SWEEP_FRACTION"],
+        RES_DIR=params["RES_DIR"],
+        LOGGING=params["LOGGING"],
+        PROJECT=params["PROJECT"],
+    )

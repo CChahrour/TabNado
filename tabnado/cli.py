@@ -18,14 +18,30 @@ def data() -> None:
 
 def sweep() -> None:
     """Run hyperparameter sweep stage."""
-    from tabnado.gandalf_sweep import main as sweep_main
+    from tabnado.utils import load_params, parse_params_arg
+
+    params = load_params(parse_params_arg())
+    model_type = params.get("MODEL_TYPE", "gandalf")
+
+    if model_type == "xgboost":
+        from tabnado.xgb_sweep import main as sweep_main
+    else:
+        from tabnado.gandalf_sweep import main as sweep_main
 
     sweep_main()
 
 
 def train() -> None:
     """Run final model training stage."""
-    from tabnado.gandalf_train import main as train_main
+    from tabnado.utils import load_params, parse_params_arg
+
+    params = load_params(parse_params_arg())
+    model_type = params.get("MODEL_TYPE", "gandalf")
+
+    if model_type == "xgboost":
+        from tabnado.xgb_train import main as train_main
+    else:
+        from tabnado.gandalf_train import main as train_main
 
     train_main()
 

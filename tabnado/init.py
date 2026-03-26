@@ -5,7 +5,7 @@ from pathlib import Path
 
 PARAMS_TEMPLATE = """# tabnado parameters
 # Required keys
-target: MLLN
+target: TARGET_NAME
 model_name: GANDALF
 sweep_fraction: 0.2
 gtf_file: data/gencode.vM25.annotation.gtf.gz

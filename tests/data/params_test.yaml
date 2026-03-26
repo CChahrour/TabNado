@@ -1,6 +1,6 @@
 # tabnado parameters
 # Required keys
-target: MLLN
+target: TEST
 model_name: GANDALF
 sweep_fraction: 0.2
 gtf_file: tests/data/test_anno.gtf
@@ -12,7 +12,7 @@ chunk_size_rows: 1000000
 n_sweeps: 2
 logging: tensorboard
 min_target: 1
-min_features: 4
+min_features: 3
 exclude_ips: ["AF4C", "MLLC"]
 prefixes: ["CAT", "ChIP", "CM"]
 window_size: 3000

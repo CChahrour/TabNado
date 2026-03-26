@@ -22,6 +22,7 @@ from tabnado.utils import (
     LOAD_DATA_PARAMS,
     LoguruProgressCallback,
     seed_everything,
+    log_macro,
 )
 
 _LOCAL_SWEEP_BEST_HP_CACHE: dict[str, dict] = {}
@@ -86,7 +87,7 @@ def sweep_train(
     os.makedirs(logging_dir, exist_ok=True)
     experiment_project = logging_dir if LOGGING == "tensorboard" else PROJECT
 
-    run_name = f"sweep_{time.strftime('%Y-%m-%d')}"
+    run_name = f"GANDALF_sweep_{time.strftime('%Y-%m-%d_%H%M')}"
     sweep_root = (
         os.path.join(RES_DIR, "sweep", SWEEP_ID)
         if SWEEP_ID
@@ -113,6 +114,18 @@ def sweep_train(
     )
 
     def _fit_and_eval(config_obj):
+        # Optionally initialize wandb with custom config if using wandb
+        if LOGGING == "wandb":
+            import wandb
+
+            wandb.init(
+                project=experiment_project,
+                name=run_name,
+                group="sweep",
+                config=vars(config_obj)
+                if hasattr(config_obj, "__dict__")
+                else dict(config_obj),
+            )
         model = TabularModel(
             data_config=_make_data_config(feature_cols, sweep_target_cols),
             experiment_config=ExperimentConfig(
@@ -170,11 +183,15 @@ def sweep_train(
         logger.info(
             f"Sweep train size: {len(sweep_train_data):,} ({SWEEP_FRACTION:.0%} of full)"
         )
+
         model.fit(
             train=sweep_train_data,
             validation=eval_view,
             callbacks=[LoguruProgressCallback()],
         )
+        # Log macro metrics to wandb if enabled
+        if use_wandb:
+            log_macro(model, sweep_target_cols)
 
         pred_df = model.predict(test_view)
         pred_df.columns = [c.replace("_prediction", "") for c in pred_df.columns]
@@ -199,7 +216,7 @@ def sweep_train(
         with open(os.path.join(run_dir, "metrics.json"), "w") as f:
             json.dump(test_metrics, f, indent=4)
         with open(os.path.join(run_dir, "hyperparameters.json"), "w") as f:
-            json.dump(vars(config_obj), f, indent=4)
+            json.dump(dict(config_obj), f, indent=4)
 
         if use_wandb:
             wandb.log(test_metrics)
@@ -222,6 +239,7 @@ def sweep_train(
         reinit="finish_previous",
         project=PROJECT,
         name=run_name,
+        group="sweep",
     ) as run:
         return _fit_and_eval(run.config)
 
@@ -231,7 +249,7 @@ def create_sweep_dict(
     PROJECT: str = "PROJECT_NAME",
 ):
     return {
-        "name": f"{MODEL_NAME}_{time.strftime('%Y-%m-%d_%H%M')}",
+        "name": MODEL_NAME,
         "method": "bayes",
         "metric": {"name": "valid_r2_score", "goal": "maximize"},
         "parameters": {
@@ -281,7 +299,7 @@ def start_sweep_and_run(
     os.environ.setdefault("WANDB_DIR", RES_DIR)
 
     if not use_wandb:
-        sweep_id = f"local-{time.strftime('%Y-%m-%d_%H%M%S')}"
+        sweep_id = f"local-{time.strftime('%Y-%m-%d_%H%M')}"
         local_sweep_dir = os.path.join(sweep_dir, sweep_id)
         os.makedirs(local_sweep_dir, exist_ok=True)
 
@@ -360,12 +378,55 @@ def get_best_hp_from_sweep(
             f"No local best_hyperparameters found in cache and no file at {root_hp_path}"
         )
 
-    api = wandb.Api()
-    sweep_path = f"{entity}/{PROJECT}/{sweep_id}" if entity else f"{PROJECT}/{sweep_id}"
-    sweep = api.sweep(sweep_path)
-    best_run = sweep.best_run()
     hp_keys = list(create_sweep_dict()["parameters"].keys())
-    return {k: best_run.config[k] for k in hp_keys if k in best_run.config}
+
+    # Try wandb API first; fall back to local sweep run directories.
+    try:
+        api = wandb.Api()
+        sweep_path = (
+            f"{entity}/{PROJECT}/{sweep_id}" if entity else f"{PROJECT}/{sweep_id}"
+        )
+        sweep = api.sweep(sweep_path)
+        best_run = sweep.best_run()
+        if best_run is not None:
+            hp = {k: best_run.config[k] for k in hp_keys if k in best_run.config}
+            if hp:
+                return hp
+    except Exception as e:
+        logger.warning(
+            f"wandb API unavailable ({e}), falling back to local sweep files"
+        )
+
+    # Fall back: scan local run directories under RES_DIR/sweep/sweep_id/
+    sweep_dir = os.path.join(RES_DIR, "sweep", sweep_id)
+    if not os.path.isdir(sweep_dir):
+        raise FileNotFoundError(f"No local sweep directory found at {sweep_dir}")
+
+    best_hp = None
+    best_score = -np.inf
+    for run_dir in os.scandir(sweep_dir):
+        if not run_dir.is_dir():
+            continue
+        metrics_path = os.path.join(run_dir.path, "metrics.json")
+        hp_path = os.path.join(run_dir.path, "hyperparameters.json")
+        if not os.path.exists(metrics_path) or not os.path.exists(hp_path):
+            continue
+        with open(metrics_path) as f:
+            metrics = json.load(f)
+        score = metrics.get("test_r2_macro", -np.inf)
+        if score > best_score:
+            with open(hp_path) as f:
+                all_hp = json.load(f)
+            hp = {k: all_hp[k] for k in hp_keys if k in all_hp}
+            if hp:
+                best_score = score
+                best_hp = hp
+
+    if best_hp is None:
+        raise RuntimeError(f"No valid local sweep runs found in {sweep_dir}")
+
+    logger.info(f"Best local sweep run: test_r2_macro={best_score:.4f}  hp={best_hp}")
+    return best_hp
 
 
 def main():

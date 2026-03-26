@@ -1,21 +1,29 @@
 ##description: minimal test annotation — all TSS within 1500bp of chromosome edges
 ##format: gtf
 ##genome-build: GRCh38
-chr1	HAVANA	gene	3001	6000	.	+	.	gene_id "ENSG00000001"; gene_name "GENE0"; gene_type "protein_coding";
-chr1	HAVANA	gene	3001	6000	.	+	.	gene_id "ENSG00000001"; gene_name "GENE1"; gene_type "protein_coding";
-chr1	HAVANA	gene	4001	7000	.	-	.	gene_id "ENSG00000002"; gene_name "GENE2"; gene_type "protein_coding";
-chr1	HAVANA	gene	5001	8000	.	+	.	gene_id "ENSG00000003"; gene_name "GENE3"; gene_type "protein_coding";
-chr1	HAVANA	gene	6001	9000	.	-	.	gene_id "ENSG00000004"; gene_name "GENE4"; gene_type "protein_coding";
-chr1	HAVANA	gene	6001	9500	.	-	.	gene_id "ENSG00000004"; gene_name "GENE4"; gene_type "protein_coding";
-chr1	HAVANA	gene	6501	9000	.	-	.	gene_id "ENSG00000004"; gene_name "GENE4"; gene_type "protein_coding";
-chr1	HAVANA	gene	7001	10000	.	+	.	gene_id "ENSG00000005"; gene_name "GENE5"; gene_type "protein_coding";
-chr8	HAVANA	gene	3001	6000	.	+	.	gene_id "ENSG00000006"; gene_name "GENE6"; gene_type "protein_coding";
-chr8	HAVANA	gene	4001	7000	.	-	.	gene_id "ENSG00000007"; gene_name "GENE7"; gene_type "protein_coding";
-chr8	HAVANA	gene	5001	8000	.	+	.	gene_id "ENSG00000008"; gene_name "GENE8"; gene_type "protein_coding";
-chr8	HAVANA	gene	6001	9000	.	-	.	gene_id "ENSG00000009"; gene_name "GENE9"; gene_type "protein_coding";
-chr8	HAVANA	gene	7001	10000	.	+	.	gene_id "ENSG00000010"; gene_name "GENE10"; gene_type "protein_coding";
-chr9	HAVANA	gene	3001	6000	.	+	.	gene_id "ENSG00000011"; gene_name "GENE11"; gene_type "protein_coding";
-chr9	HAVANA	gene	4001	7000	.	-	.	gene_id "ENSG00000012"; gene_name "GENE12"; gene_type "protein_coding";
-chr9	HAVANA	gene	5001	8000	.	+	.	gene_id "ENSG00000013"; gene_name "GENE13"; gene_type "protein_coding";
-chr9	HAVANA	gene	6001	9000	.	-	.	gene_id "ENSG00000014"; gene_name "GENE14"; gene_type "protein_coding";
-chr9	HAVANA	gene	7001	10000	.	+	.	gene_id "ENSG00000015"; gene_name "GENE15"; gene_type "protein_coding";
+chr1	TEST	gene	3001	6000	.	+	.	gene_name "GENE1A"; gene_type "protein_coding";
+chr1	TEST	gene	3001	6000	.	+	.	gene_name "GENE1B"; gene_type "protein_coding";
+chr1	TEST	gene	4001	7000	.	-	.	gene_name "GENE1C"; gene_type "protein_coding";
+chr1	TEST	gene	6001	9000	.	-	.	gene_name "GENE1D"; gene_type "protein_coding";
+chr1	TEST	gene	6001	9500	.	-	.	gene_name "GENE1D"; gene_type "protein_coding";
+chr1	TEST	gene	6501	9000	.	-	.	gene_name "GENE1D"; gene_type "protein_coding";
+chr2	TEST	gene	3001	6000	.	+	.	gene_name "GENE2A"; gene_type "protein_coding";
+chr2	TEST	gene	3001	6000	.	+	.	gene_name "GENE2B"; gene_type "protein_coding";
+chr2	TEST	gene	4001	7000	.	-	.	gene_name "GENE2C"; gene_type "protein_coding";
+chr2	TEST	gene	6001	9000	.	-	.	gene_name "GENE2D"; gene_type "protein_coding";
+chr2	TEST	gene	6001	9500	.	-	.	gene_name "GENE2D"; gene_type "protein_coding";
+chr2	TEST	gene	6501	9000	.	-	.	gene_name "GENE2D"; gene_type "protein_coding";
+chr3	TEST	gene	3001	6000	.	+	.	gene_name "GENE3A"; gene_type "protein_coding";
+chr3	TEST	gene	3001	6000	.	+	.	gene_name "GENE3B"; gene_type "protein_coding";
+chr3	TEST	gene	4001	7000	.	-	.	gene_name "GENE3C"; gene_type "protein_coding";
+chr3	TEST	gene	6001	9000	.	-	.	gene_name "GENE3D"; gene_type "protein_coding";
+chr3	TEST	gene	6001	9500	.	-	.	gene_name "GENE3D"; gene_type "protein_coding";
+chr3	TEST	gene	6501	9000	.	-	.	gene_name "GENE3D"; gene_type "protein_coding";
+chr8	TEST	gene	3001	6000	.	+	.	gene_name "GENE8A"; gene_type "protein_coding";
+chr8	TEST	gene	4001	7000	.	-	.	gene_name "GENE8B"; gene_type "protein_coding";
+chr8	TEST	gene	5001	8000	.	+	.	gene_name "GENE8C"; gene_type "protein_coding";
+chr8	TEST	gene	7001	10000	.	+	.	gene_name "GENE8D"; gene_type "protein_coding";
+chr9	TEST	gene	3001	6000	.	+	.	gene_name "GENE9A"; gene_type "protein_coding";
+chr9	TEST	gene	4001	7000	.	-	.	gene_name "GENE9B"; gene_type "protein_coding";
+chr9	TEST	gene	5001	8000	.	+	.	gene_name "GENE9C"; gene_type "protein_coding";
+chr9	TEST	gene	7001	10000	.	+	.	gene_name "GENE9D"; gene_type "protein_coding";

@@ -8,17 +8,24 @@ from quantnado.dataset.store_bam import _compute_sample_hash
 
 DEFAULT_OUT = Path(__file__).parent / "data" / "dataset" / "coverage.zarr"
 
+TARGET_STR = "TEST"
+
 SAMPLE_NAMES = [
-    "ChIP-CELL_MLLN",
-    "CAT-CELL_MLLN",
-    "CM-CELL_MLLN",
+    f"ChIP-CELL_{TARGET_STR}",
+    f"CAT-CELL_{TARGET_STR}",
+    f"CM-CELL_{TARGET_STR}",
     "ChIP-CELL_H3K4me3",
     "ChIP-CELL_H3K27ac",
     "ChIP-CELL_CTCF",
-    "ChIP-CELL_H3K4me1",
 ]
-CHROMOSOMES = ["chr1", "chr8", "chr9"]
-CHROMSIZES = {"chr1": 20_000, "chr8": 20_000, "chr9": 20_000}
+CHROMOSOMES = ["chr1", "chr2", "chr3", "chr8", "chr9"]
+CHROMSIZES = {
+    "chr1": 20_000,
+    "chr2": 20_000,
+    "chr3": 20_000,
+    "chr8": 20_000,
+    "chr9": 20_000,
+}
 CHUNK_LEN = 65_536
 N = len(SAMPLE_NAMES)
 
@@ -32,6 +39,9 @@ def create_test_dataset(out: Path | None = None) -> Path:
     rng = np.random.default_rng(42)
     root = zarr.open_group(str(out_path), mode="w", zarr_format=3)
 
+    target_indices = [i for i, s in enumerate(SAMPLE_NAMES) if TARGET_STR in s]
+    feature_indices = [i for i, s in enumerate(SAMPLE_NAMES) if TARGET_STR not in s]
+
     # Chromosome arrays are stored as (sample x position).
     for chrom, size in CHROMSIZES.items():
         arr = root.create_array(
@@ -41,7 +51,22 @@ def create_test_dataset(out: Path | None = None) -> Path:
             dtype=np.uint16,
             fill_value=0,
         )
-        arr[:] = rng.integers(0, 20, size=(N, size), dtype=np.uint16)
+        # Build a smooth latent signal by generating coarse values every 500bp
+        # then linearly interpolating, so structure spans window/tile scales.
+        coarse_size = size // 500 + 2
+        coarse = rng.uniform(2, 12, size=coarse_size)
+        coarse_x = np.linspace(0, size - 1, coarse_size)
+        fine_x = np.arange(size)
+        latent = np.interp(fine_x, coarse_x, coarse)
+
+        data = np.zeros((N, size), dtype=np.uint16)
+        for i in target_indices:
+            noise = rng.normal(0, 0.5, size=size)
+            data[i] = np.clip(latent + noise, 0, 65535).astype(np.uint16)
+        for i in feature_indices:
+            noise = rng.normal(0, 1.5, size=size)
+            data[i] = np.clip(latent + noise, 0, 65535).astype(np.uint16)
+        arr[:] = data
 
     meta = root.create_group("metadata")
 

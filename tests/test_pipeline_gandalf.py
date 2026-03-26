@@ -11,7 +11,7 @@ def test_gandalf_pipeline(coverage_path, params, loaded_data):
 
     old_argv = sys.argv[:]
     try:
-        params_path = Path(__file__).parent / "data" / "params_test.yaml"
+        params_path = Path(__file__).parent / "data" / "params_gandalf_test.yaml"
         sys.argv = ["tabnado-run", "-p", str(params_path)]
         cli_run()
     finally:

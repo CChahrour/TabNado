@@ -44,13 +44,8 @@ def compute_xgb_shap(
     )
 
     # XGBoost: use TreeExplainer per estimator (fast, exact)
-    from sklearn.multioutput import MultiOutputRegressor
-
     sv_list = []
-    if isinstance(final_model, MultiOutputRegressor):
-        estimators = final_model.estimators_
-    else:
-        estimators = [final_model]
+    estimators = final_model if isinstance(final_model, list) else [final_model]
     for booster in estimators:
         explainer = shap.Explainer(booster, X_bg)
         ex = explainer(X_test_sub, check_additivity=False)

@@ -1,7 +1,8 @@
-# tabnado parameters — XGBoost backend test
+# tabnado parameters
+# Required keys
 target: TEST
-model_name: XGBoost
-sweep_fraction: 0.5
+model_name: GANDALF
+sweep_fraction: 0.2
 gtf_file: tests/data/test_anno.gtf
 eval_chr: chr8
 test_chr: chr9

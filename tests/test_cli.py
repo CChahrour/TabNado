@@ -25,7 +25,7 @@ def test_init_creates_template(cli_output_dir, monkeypatch, capsys):
 
     assert output.exists()
     text = output.read_text(encoding="utf-8")
-    assert "target: MLLN" in text
+    assert "target: TARGET_NAME" in text
     assert "model_name: GANDALF" in text
 
     out = capsys.readouterr().out
@@ -52,4 +52,4 @@ def test_init_overwrites_with_force(cli_output_dir, monkeypatch):
 
     init_module.main()
 
-    assert "target: MLLN" in output.read_text(encoding="utf-8")
+    assert "target: TARGET_NAME" in output.read_text(encoding="utf-8")

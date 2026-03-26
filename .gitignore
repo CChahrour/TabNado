@@ -26,5 +26,6 @@ planning.md
 # Output files
 site/
 test_output/
+wandb/
 params.yaml
 *.log

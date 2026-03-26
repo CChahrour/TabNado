@@ -228,3 +228,44 @@ def figure_style():
     }
     plt.rcParams.update(rc)
     sns.set_theme(style="white", rc=rc)
+
+
+def log_macro(final_model, target_cols):
+    """
+    Helper function to log valid_r2-macro and train_r2-macro to wandb after GANDALF training.
+    Logs both metrics per epoch (step).
+    """
+    import wandb
+
+    if (
+        not hasattr(final_model, "history")
+        or "valid_r2_score" not in final_model.history
+        or "train_r2_score" not in final_model.history
+        or "valid_loss" not in final_model.history
+        or "train_loss" not in final_model.history
+    ):
+        print(
+            "No valid_r2_score or train_r2_score found in model history. Skipping r2_macro logging."
+        )
+        return
+
+    valid_r2 = final_model.history["valid_r2_score"]
+    train_r2 = final_model.history["train_r2_score"]
+    valid_loss = final_model.history["valid_loss"]
+    train_loss = final_model.history["train_loss"]
+    if (
+        isinstance(valid_r2, list)
+        and isinstance(train_r2, list)
+        and isinstance(valid_loss, list)
+        and isinstance(train_loss, list)
+    ):
+        for step, (v_r2, t_r2, v_loss, t_loss) in enumerate(
+            zip(valid_r2, train_r2, valid_loss, train_loss)
+        ):
+            log_dict = {
+                "valid_r2_macro": v_r2 / len(target_cols),
+                "train_r2_macro": t_r2 / len(target_cols),
+                "valid_loss_macro": v_loss / len(target_cols),
+                "train_loss_macro": t_loss / len(target_cols),
+            }
+            wandb.log(log_dict, step=step)

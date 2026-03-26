@@ -14,7 +14,7 @@ from pytorch_tabular.config import (
 from pytorch_tabular.models import GANDALFConfig
 
 from tabnado.gandalf_sweep import _make_data_config
-from tabnado.utils import LOAD_DATA_PARAMS, LoguruProgressCallback
+from tabnado.utils import LOAD_DATA_PARAMS, LoguruProgressCallback, log_macro
 
 
 def train_final_model(
@@ -33,6 +33,16 @@ def train_final_model(
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
     os.makedirs(logging_dir, exist_ok=True)
     experiment_project = logging_dir if LOGGING == "tensorboard" else PROJECT
+    # Optionally initialize wandb with custom config if using wandb
+    if LOGGING == "wandb":
+        import wandb
+
+        wandb.init(
+            project=experiment_project,
+            name=f"{MODEL_NAME}_final_{time.strftime('%Y-%m-%d_%H%M')}",
+            group="final",
+            config=best_hp,
+        )
     final_model = TabularModel(
         data_config=_make_data_config(feature_cols, target_cols),
         experiment_config=ExperimentConfig(
@@ -41,7 +51,7 @@ def train_final_model(
             log_logits=False,
             log_target=LOGGING,
             project_name=experiment_project,
-            run_name=f"final_{time.strftime('%Y-%m-%d')}",
+            run_name=f"{MODEL_NAME}_final_{time.strftime('%Y-%m-%d_%H%M')}",
         ),
         model_config=GANDALFConfig(
             learning_rate=best_hp.get("learning_rate", 1e-2),
@@ -89,6 +99,9 @@ def train_final_model(
     assert final_model.model is not None
     final_model.save_model(os.path.join(RES_DIR, "final_model"), inference_only=False)
     logger.info(f"Final GANDALF model saved to {RES_DIR}/final_model")
+
+    if LOGGING == "wandb":
+        log_macro(final_model, target_cols)
     return final_model
 
 
@@ -133,7 +146,6 @@ def main():
                 "MODEL_NAME",
                 "RES_DIR",
                 "LOGGING_DIR",
-                "date",
                 "LOGGING",
             )
         },
