@@ -948,7 +948,7 @@
 <h2 id="common-keys">Common Keys<a class="headerlink" href="#common-keys" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>n_sweeps</code>: Number of sweep runs</li>
-<li><code>logging</code>: <code>wandb</code> or <code>tensorboard</code></li>
+<li><code>logging</code>: <code>wandb</code> or <code>tensorboard</code> — wandb is supported by both backends; tensorboard is GANDALF only</li>
 </ul>
 <h2 id="genomicdata-keys">Genomic/Data Keys<a class="headerlink" href="#genomicdata-keys" title="Permanent link">&para;</a></h2>
 <ul>
@@ -982,7 +982,7 @@
 <h2 id="derived-runtime-paths">Derived Runtime Paths<a class="headerlink" href="#derived-runtime-paths" title="Permanent link">&para;</a></h2>
 <p>At runtime the code computes:</p>
 <ul>
-<li><code>PROJECT = &lt;model_name&gt;_&lt;target&gt;_&lt;date&gt;</code></li>
+<li><code>PROJECT = &lt;model_name&gt;_&lt;target&gt;</code></li>
 <li><code>RES_DIR = &lt;output_dir&gt;/&lt;PROJECT&gt;</code></li>
 <li><code>FIG_DIR = &lt;RES_DIR&gt;/figures</code></li>
 <li><code>LOGGING_DIR = &lt;RES_DIR&gt;/logging</code></li>
