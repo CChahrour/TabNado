@@ -117,14 +117,22 @@ def sweep_train(
         # Optionally initialize wandb with custom config if using wandb
         if LOGGING == "wandb":
             import wandb
-
+            # Always convert config_obj to dict for wandb config
+            if hasattr(config_obj, "__dict__"):
+                wandb_config = vars(config_obj)
+            elif isinstance(config_obj, dict):
+                wandb_config = config_obj
+            else:
+                # fallback: try to convert to dict
+                try:
+                    wandb_config = dict(config_obj)
+                except Exception:
+                    wandb_config = {}
             wandb.init(
                 project=experiment_project,
                 name=run_name,
                 group="sweep",
-                config=vars(config_obj)
-                if hasattr(config_obj, "__dict__")
-                else dict(config_obj),
+                config=wandb_config,
             )
         model = TabularModel(
             data_config=_make_data_config(feature_cols, sweep_target_cols),
@@ -216,7 +224,7 @@ def sweep_train(
         with open(os.path.join(run_dir, "metrics.json"), "w") as f:
             json.dump(test_metrics, f, indent=4)
         with open(os.path.join(run_dir, "hyperparameters.json"), "w") as f:
-            json.dump(dict(config_obj), f, indent=4)
+            json.dump(vars(config_obj), f, indent=4)
 
         if use_wandb:
             wandb.log(test_metrics)
