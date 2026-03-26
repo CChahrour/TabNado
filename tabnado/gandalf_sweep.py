@@ -117,6 +117,7 @@ def sweep_train(
         # Optionally initialize wandb with custom config if using wandb
         if LOGGING == "wandb":
             import wandb
+
             # Always convert config_obj to dict for wandb config
             if hasattr(config_obj, "__dict__"):
                 wandb_config = vars(config_obj)
