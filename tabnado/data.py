@@ -392,6 +392,8 @@ def load_or_build_datasets(
             )
             plt.xticks(rotation=45, ha="right")
             plt.title("Distribution of targets in training set")
+            plt.xlabel("Target")
+            plt.ylabel("MinMax-scaled log1p RPKM")
             plt.legend(title="Assay", bbox_to_anchor=(1.05, 1), loc="upper left")
             plt.tight_layout()
             plt.savefig(f"{fig_dir}/target_distributions.png")
