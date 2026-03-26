@@ -15,6 +15,6 @@ min_target: 1
 min_features: 3
 exclude_ips: ["AF4C", "MLLC"]
 prefixes: ["CAT", "ChIP", "CM"]
-window_size: 3000
-step_size: 100
-tile_size: 200
+window_size: 2000
+step_size: 250
+tile_size: 1000
