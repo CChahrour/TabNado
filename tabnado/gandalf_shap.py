@@ -49,34 +49,25 @@ def compute_gandalf_shap(
     if pt_model is None:
         raise RuntimeError("TabularModel has no underlying model — was it trained?")
     device = next(pt_model.parameters()).device
-    # SHAP queries the model with tiny batches (often size 1); ensure inference mode.
     pt_model.eval()
 
-    def predict_fn(x_np):
-        if x_np.ndim == 1:
-            x_np = x_np.reshape(1, -1)
-        # KernelExplainer may call the model with one sample; duplicate to avoid
-        # batchnorm failures in models that still expect batch_size > 1.
-        single_row = x_np.shape[0] == 1
-        if single_row:
-            x_np = np.repeat(x_np, 2, axis=0)
-        x_tensor = torch.tensor(x_np, dtype=torch.float32, device=device)
-        with torch.no_grad():
-            outputs = pt_model({"continuous": x_tensor})
-        logits = outputs["logits"].detach().cpu().numpy()
-        return logits[:1] if single_row else logits
+    # GradientExplainer requires a model that takes a plain tensor.
+    # Wrap the pytorch-tabular model's dict interface.
+    class _TensorWrapper(torch.nn.Module):
+        def __init__(self, model):
+            super().__init__()
+            self.model = model
 
-    n_unique = len(train_data[feature_cols].drop_duplicates())
-    k_bg = min(50, n_unique)
-    X_bg_kmeans = shap.kmeans(train_data[feature_cols].values, k=k_bg)
-    explainer = shap.KernelExplainer(
-        predict_fn,
-        X_bg_kmeans,
-        seed=42,
-        feature_names=feature_cols,
-        output_names=target_cols,
-    )
-    shap_values = explainer.shap_values(X_test_sub.values)
+        def forward(self, x):
+            return self.model({"continuous": x})["logits"]
+
+    wrapped = _TensorWrapper(pt_model).to(device)
+
+    bg_tensor = torch.tensor(X_bg.values, dtype=torch.float32, device=device)
+    test_tensor = torch.tensor(X_test_sub.values, dtype=torch.float32, device=device)
+
+    explainer = shap.GradientExplainer(wrapped, bg_tensor)
+    shap_values = explainer.shap_values(test_tensor)
 
     # SHAP may return either a list (one array per target) or a single
     # 3D array shaped (n_samples, n_features, n_targets). Normalize both
@@ -262,7 +253,7 @@ def _plot_spatial_shap(
         logger.info(f"Saved spatial SHAP: {spatial_csv}")
 
         # === Heatmap: cofactor × offset ===
-        fig, ax = plt.subplots(figsize=(12, 4))
+        fig, ax = plt.subplots(figsize=(12, max(4, len(cofactor_names) * 0.4 + 2)))
         sns.heatmap(
             spatial_df,
             annot=False,
@@ -280,17 +271,22 @@ def _plot_spatial_shap(
         plt.close(fig)
         logger.info(f"Saved spatial heatmap: {heatmap_path}")
 
-        # === Line plot: aggregate across cofactors ===
-        offset_importance = spatial_df.mean(axis=0)
-        offset_importance_np = offset_importance.to_numpy(dtype=float)
+        # === Line plot: one line per cofactor, coloured by feature ===
+        palette = sns.color_palette("tab20", n_colors=len(cofactor_names))
         fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(centre_bp, offset_importance_np, marker="o", linewidth=2)
-        ax.axvline(x=0, color="red", linestyle="--", alpha=0.7, label="TSS center")
+        for cofactor, color in zip(cofactor_names, palette):
+            row = spatial_df.loc[cofactor].to_numpy(dtype=float)
+            ax.plot(
+                centre_bp, row, linewidth=1.5, alpha=0.8, label=cofactor, color=color
+            )
+        ax.axvline(x=0, color="black", linestyle="--", alpha=0.5, label="TSS center")
         ax.set_xlabel("Offset from TSS (bp)")
-        ax.set_ylabel("Mean |SHAP| (avg across cofactors)")
+        ax.set_ylabel("Mean |SHAP|")
         ax.set_title(f"Genomic Distance Importance Profile ({target_col})")
         ax.grid(True, alpha=0.3)
-        ax.legend()
+        ax.legend(
+            fontsize=7, bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0
+        )
         line_path = f"{FIG_DIR}/shap_offset_line_{target_col.replace('/', '_')}.png"
         fig.savefig(line_path, bbox_inches="tight", dpi=100)
         plt.close(fig)

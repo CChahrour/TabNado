@@ -247,7 +247,7 @@ def _plot_spatial_shap(
         logger.info(f"Saved spatial SHAP: {spatial_csv}")
 
         # === Heatmap: cofactor × offset ===
-        fig, ax = plt.subplots(figsize=(12, 4))
+        fig, ax = plt.subplots(figsize=(12, max(4, len(cofactor_names) * 0.4 + 2)))
         sns.heatmap(
             spatial_df,
             annot=False,
@@ -265,17 +265,22 @@ def _plot_spatial_shap(
         plt.close(fig)
         logger.info(f"Saved spatial heatmap: {heatmap_path}")
 
-        # === Line plot: aggregate across cofactors ===
-        offset_importance = spatial_df.mean(axis=0)
-        offset_importance_np = offset_importance.to_numpy(dtype=float)
+        # === Line plot: one line per cofactor, coloured by feature ===
+        palette = sns.color_palette("tab20", n_colors=len(cofactor_names))
         fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(centre_bp, offset_importance_np, marker="o", linewidth=2)
-        ax.axvline(x=0, color="red", linestyle="--", alpha=0.7, label="TSS center")
+        for cofactor, color in zip(cofactor_names, palette):
+            row = spatial_df.loc[cofactor].to_numpy(dtype=float)
+            ax.plot(
+                centre_bp, row, linewidth=1.5, alpha=0.8, label=cofactor, color=color
+            )
+        ax.axvline(x=0, color="black", linestyle="--", alpha=0.5, label="TSS center")
         ax.set_xlabel("Offset from TSS (bp)")
-        ax.set_ylabel("Mean |SHAP| (avg across cofactors)")
+        ax.set_ylabel("Mean |SHAP|")
         ax.set_title(f"Genomic Distance Importance Profile ({target_col})")
         ax.grid(True, alpha=0.3)
-        ax.legend()
+        ax.legend(
+            fontsize=7, bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0
+        )
         line_path = f"{FIG_DIR}/shap_offset_line_{target_col.replace('/', '_')}.png"
         fig.savefig(line_path, bbox_inches="tight", dpi=100)
         plt.close(fig)

@@ -10,7 +10,7 @@ import quantnado as qn
 import seaborn as sns
 from loguru import logger
 
-from tabnado.utils import LOAD_DATA_PARAMS
+from tabnado.utils import LOAD_DATA_PARAMS, figure_style
 
 
 def sliding_window(df, window_size: int, step_size: int, tile_size: int):
@@ -381,6 +381,7 @@ def load_or_build_datasets(
             target_data_melted["assay"] = (
                 target_data_melted["feature"].str.split("-").str[0]
             )
+            figure_style()
             plt.figure(figsize=(12, 6))
             sns.violinplot(
                 x="feature",
