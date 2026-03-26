@@ -147,7 +147,7 @@ def sweep_train(
             trainer_config=TrainerConfig(
                 accelerator="mps"
                 if torch.backends.mps.is_available()
-                else "cuda"
+                else "gpu"
                 if torch.cuda.is_available()
                 else "cpu",
                 auto_lr_find=False,
