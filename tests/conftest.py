@@ -78,6 +78,7 @@ def coverage_path(params):
 @pytest.fixture(scope="session")
 def loaded_data(params):
     import tabnado
+
     _, _, target_cols, feature_cols, train, eval_, test = tabnado.load_data(
         **vars(params)
     )

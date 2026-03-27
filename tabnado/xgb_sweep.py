@@ -191,9 +191,7 @@ def main():
     params = PipelineParams.from_yaml(parse_params_arg())
     setup_logger(params["RES_DIR"], params["PROJECT"])
 
-    _, _, target_cols, feature_cols, train_data, _, _ = load_data(
-        **vars(params)
-    )
+    _, _, target_cols, feature_cols, train_data, _, _ = load_data(**vars(params))
 
     wandb_cfg = None
     if params["LOGGING"] == "wandb":

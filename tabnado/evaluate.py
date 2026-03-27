@@ -206,9 +206,7 @@ def main():
     if final_model.model is None:
         raise RuntimeError("Loaded model has no weights — check model directory")
 
-    _, _, target_cols, feature_cols, _, _, test_data = load_data(
-        **vars(params)
-    )
+    _, _, target_cols, feature_cols, _, _, test_data = load_data(**vars(params))
 
     evaluate_model(
         final_model,

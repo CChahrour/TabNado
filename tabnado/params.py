@@ -74,7 +74,11 @@ class PipelineParams:
             if "windows_bed" in p
             else Path(data_dir) / "regions.bed"
         )
-        chunk_size_rows = int(p["chunk_size_rows"]) if p.get("chunk_size_rows") is not None else 1_000_000
+        chunk_size_rows = (
+            int(p["chunk_size_rows"])
+            if p.get("chunk_size_rows") is not None
+            else 1_000_000
+        )
 
         return cls(
             DATASET=dataset,
