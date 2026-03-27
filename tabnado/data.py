@@ -314,7 +314,10 @@ def stratified_sample(df, target_cols: list[str], frac: float, seed: int = 42):
         return df.sample(n=1, random_state=seed)
     return sampled
 
-def plot_target_distributions(train_data: pd.DataFrame, target_cols: list[str], fig_dir: str):
+
+def plot_target_distributions(
+    train_data: pd.DataFrame, target_cols: list[str], fig_dir: str
+):
     target_features = [col for col in train_data.columns if col in target_cols]
 
     if target_features:
@@ -343,6 +346,7 @@ def plot_target_distributions(train_data: pd.DataFrame, target_cols: list[str], 
         plt.savefig(f"{fig_dir}/target_distributions.png")
         plt.close()
     return target_features
+
 
 def load_or_build_datasets(
     ds,
