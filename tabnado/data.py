@@ -314,6 +314,35 @@ def stratified_sample(df, target_cols: list[str], frac: float, seed: int = 42):
         return df.sample(n=1, random_state=seed)
     return sampled
 
+def plot_target_distributions(train_data: pd.DataFrame, target_cols: list[str], fig_dir: str):
+    target_features = [col for col in train_data.columns if col in target_cols]
+
+    if target_features:
+        target_data_melted = train_data[target_features].melt(
+            var_name="feature", value_name="value"
+        )
+        target_data_melted["assay"] = (
+            target_data_melted["feature"].str.split("-").str[0]
+        )
+        figure_style()
+        plt.figure(figsize=(len(target_features) * 2, 6))
+        sns.violinplot(
+            x="feature",
+            y="value",
+            data=target_data_melted,
+            hue="assay",
+            palette="tab20",
+        )
+        plt.xticks(rotation=45, ha="right")
+        plt.title("Distribution of targets\nin training set")
+        plt.xlabel("")
+        plt.ylabel("MinMax-scaled\nlog1p RPKM")
+        plt.legend(title="Assay", bbox_to_anchor=(1.05, 1), loc="upper left")
+        plt.tight_layout()
+        Path(fig_dir).mkdir(parents=True, exist_ok=True)
+        plt.savefig(f"{fig_dir}/target_distributions.png")
+        plt.close()
+    return target_features
 
 def load_or_build_datasets(
     ds,
@@ -416,33 +445,7 @@ def load_or_build_datasets(
     logger.info(f"Saved train/eval/test parquets to {Path(dataset_train_path).parent}")
 
     if fig_dir and target_cols:
-        target_features = [col for col in train_data.columns if col in target_cols]
-
-        if target_features:
-            target_data_melted = train_data[target_features].melt(
-                var_name="feature", value_name="value"
-            )
-            target_data_melted["assay"] = (
-                target_data_melted["feature"].str.split("-").str[0]
-            )
-            figure_style()
-            plt.figure(figsize=(len(target_features) * 2, 6))
-            sns.violinplot(
-                x="feature",
-                y="value",
-                data=target_data_melted,
-                hue="assay",
-                palette="tab20",
-            )
-            plt.xticks(rotation=45, ha="right")
-            plt.title("Distribution of targets\nin training set")
-            plt.xlabel("")
-            plt.ylabel("MinMax-scaled\nlog1p RPKM")
-            plt.legend(title="Assay", bbox_to_anchor=(1.05, 1), loc="upper left")
-            plt.tight_layout()
-            Path(fig_dir).mkdir(parents=True, exist_ok=True)
-            plt.savefig(f"{fig_dir}/target_distributions.png")
-            plt.close()
+        plot_target_distributions(train_data, target_cols, fig_dir)
 
     return train_data, eval_data, test_data
 
