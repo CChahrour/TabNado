@@ -24,7 +24,7 @@ def sweep() -> None:
     from tabnado.utils import parse_params_arg
 
     params = PipelineParams.from_yaml(parse_params_arg())
-    model_type = params.get("MODEL_TYPE", "gandalf")
+    model_type = params.MODEL_TYPE
 
     if model_type == "xgboost":
         from tabnado.xgb_sweep import main as sweep_main
@@ -39,7 +39,7 @@ def train() -> None:
     from tabnado.utils import parse_params_arg
 
     params = PipelineParams.from_yaml(parse_params_arg())
-    model_type = params.get("MODEL_TYPE", "gandalf")
+    model_type = params.MODEL_TYPE
 
     if model_type == "xgboost":
         from tabnado.xgb_train import main as train_main
@@ -61,7 +61,7 @@ def shap() -> None:
     from tabnado.utils import parse_params_arg
 
     params = PipelineParams.from_yaml(parse_params_arg())
-    model_type = params.get("MODEL_TYPE", "gandalf")
+    model_type = params.MODEL_TYPE
 
     if model_type == "xgboost":
         from tabnado.xgb_shap import main as shap_main
