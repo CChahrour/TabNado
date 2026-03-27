@@ -1,10 +1,12 @@
+import logging
 import os
 import shutil
 import time
 from pathlib import Path
-import logging
+
 import pytest
 import zarr
+
 from tabnado.params import PipelineParams
 
 TEST_DIR = Path(__file__).parent

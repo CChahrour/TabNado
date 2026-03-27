@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
-import os
+
 import yaml
-import logging
 
 VALID_LOGGING_BACKENDS = {"wandb", "tensorboard"}
 VALID_MODEL_TYPES = {"gandalf", "xgboost"}

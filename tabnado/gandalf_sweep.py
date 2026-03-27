@@ -21,9 +21,9 @@ from tabnado.data import load_data, stratified_sample
 from tabnado.params import PipelineParams
 from tabnado.utils import (
     LoguruProgressCallback,
-    seed_everything,
     log_macro,
     parse_params_arg,
+    seed_everything,
     setup_logger,
 )
 

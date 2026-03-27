@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
-from pytorch_lightning import Callback
 from loguru import logger
+from pytorch_lightning import Callback
 
 
 class LoguruProgressCallback(Callback):

@@ -10,11 +10,11 @@ from loguru import logger
 
 from tabnado.data import load_data
 from tabnado.evaluate import compute_umap_embeddings, evaluate_model
-from tabnado.utils import (
-    setup_logger,
-    figure_style,
-)
 from tabnado.params import PipelineParams
+from tabnado.utils import (
+    figure_style,
+    setup_logger,
+)
 
 
 def run_pipeline(params_path: Path | str | None = None) -> None:

@@ -7,8 +7,8 @@ import pandas as pd
 import seaborn as sns
 import shap
 import torch
-from matplotlib import cm, colors
 from loguru import logger
+from matplotlib import cm, colors
 from pytorch_tabular import TabularModel
 
 from tabnado.params import PipelineParams

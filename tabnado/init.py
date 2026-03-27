@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 PARAMS_TEMPLATE = """# tabnado parameters
 # Required keys
 target: TARGET_NAME

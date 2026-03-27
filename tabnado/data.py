@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-import dask.array as da
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -9,9 +8,10 @@ import pyranges1 as pr
 import quantnado as qn
 import seaborn as sns
 from loguru import logger
+from sklearn.preprocessing import MinMaxScaler
 
-from tabnado.utils import figure_style
 from tabnado.params import PipelineParams
+from tabnado.utils import figure_style
 
 
 def sliding_window(df, window_size: int, step_size: int, tile_size: int):
@@ -84,42 +84,78 @@ def build_signal_df(
     samples: list[str],
     tss_windows,
     signal_path: str,
+    rpkm_path: str | None = None,
     chunk_size_rows: int | None = None,
 ) -> pd.DataFrame:
-    """Extract binned signal, normalise to RPKM, log1p + MinMax scale, save parquet."""
-    logger.info("Extracting signal from dataset")
-    binned_signal = ds.reduce(ranges_df=tss_windows, samples=samples)
-    if ds.coverage is None:
-        raise RuntimeError(
-            "Dataset has no coverage data — cannot compute library sizes"
-        )
-    library_sizes = ds.coverage.library_sizes
+    """Extract binned signal and scale, then save to parquet.
 
-    logger.info("Normalising to RPKM")
-    rpkm_signal = qn.normalise(
-        data=binned_signal["mean"], method="rpkm", library_sizes=library_sizes
-    )
-
-    logger.info("Applying log1p and per-cofactor MinMax scaling")
-    n_rows, n_samples = rpkm_signal.data.shape
-    if chunk_size_rows is None or int(chunk_size_rows) <= 0:
-        effective_chunk_rows = int(n_rows)
+    Pipeline:
+        0. RPKM normalisation (lazy, using ds.coverage.library_sizes)
+        1. Compute array into memory (cached to rpkm_path if provided)
+        2. UQ normalisation — divide per column by 75th percentile of non-zero values
+        3. Clip at 99.5th percentile per column
+        4. log1p (numpy)
+        5. MinMax [0, 1] per column (sklearn MinMaxScaler)
+    """
+    if rpkm_path and os.path.exists(rpkm_path):
+        logger.info(f"Loading cached RPKM array from {rpkm_path}")
+        rpkm_df = pd.read_parquet(rpkm_path)
+        arr = rpkm_df.values.astype("float32")
+        window_names = rpkm_df.index.values
+        sample_names = rpkm_df.columns.values
     else:
-        effective_chunk_rows = min(int(chunk_size_rows), int(n_rows))
-    logger.info(f"Using chunk size {effective_chunk_rows} rows × {n_samples} samples")
-    logged = da.log1p(rpkm_signal.data.astype("float32")).rechunk(
-        (effective_chunk_rows, n_samples)
-    )
-    min_vals = logged.min(axis=0, keepdims=True)
-    max_vals = logged.max(axis=0, keepdims=True)
-    scaled_values = (logged - min_vals) / (max_vals - min_vals)
+        logger.info("Extracting signal from dataset")
+        binned_signal = ds.reduce(ranges_df=tss_windows, samples=samples)
+        if ds.coverage is None:
+            raise RuntimeError(
+                "Dataset has no coverage data — cannot compute library sizes"
+            )
+        library_sizes = ds.coverage.library_sizes
 
-    logger.info("Computing scaled values")
-    signal_df = pd.DataFrame(
-        scaled_values.compute(),
-        index=rpkm_signal.coords["name"].values,
-        columns=rpkm_signal.coords["sample"].values,
-    )
+        logger.info("Normalising to RPKM")
+        rpkm_signal = qn.normalise(
+            data=binned_signal["mean"], method="rpkm", library_sizes=library_sizes
+        )
+
+        n_rows, n_samples = rpkm_signal.data.shape
+        if chunk_size_rows is None or int(chunk_size_rows) <= 0:
+            effective_chunk_rows = int(n_rows)
+        else:
+            effective_chunk_rows = min(int(chunk_size_rows), int(n_rows))
+        logger.info(
+            f"Using chunk size {effective_chunk_rows} rows × {n_samples} samples"
+        )
+
+        arr = (
+            rpkm_signal.data.astype("float32")
+            .rechunk((effective_chunk_rows, n_samples))
+            .compute()
+        )
+        window_names = rpkm_signal.coords["name"].values
+        sample_names = rpkm_signal.coords["sample"].values
+
+        if rpkm_path:
+            logger.info(f"Caching RPKM array to {rpkm_path}")
+            pd.DataFrame(arr, index=window_names, columns=sample_names).to_parquet(
+                rpkm_path
+            )
+
+    # UQ normalisation on non-zeros per column
+    non_zeros = np.where(arr > 0, arr, np.nan)
+    upper_quartile = np.nanpercentile(non_zeros, 75, axis=0)
+    upper_quartile = np.where(upper_quartile == 0, 1.0, upper_quartile)
+    arr = arr / upper_quartile
+
+    # clip at 99.5th percentile per column
+    arr = np.clip(arr, None, np.percentile(arr, 99.5, axis=0))
+
+    # log1p
+    arr = np.log1p(arr)
+
+    # MinMax [0, 1] per column
+    arr = MinMaxScaler().fit_transform(arr).astype(np.float32)
+
+    signal_df = pd.DataFrame(arr, index=window_names, columns=sample_names)
     signal_df = signal_df.fillna(0)
     tss_coords = tss_windows.Start.values - tss_windows.Score.values  # type: ignore[union-attr]
     signal_df.index = pd.MultiIndex.from_arrays(
@@ -324,8 +360,14 @@ def load_or_build_datasets(
         tss_windows = get_tss_windows(
             gtf_file, windows_bed, window_size, step_size, tile_size
         )
+        rpkm_path = str(Path(signal_path).parent / "data_rpkm.parquet")
         signal_df = build_signal_df(
-            ds, samples, tss_windows, signal_path, chunk_size_rows=chunk_size_rows
+            ds,
+            samples,
+            tss_windows,
+            signal_path,
+            rpkm_path=rpkm_path,
+            chunk_size_rows=chunk_size_rows,
         )
 
     logger.info(f"Splitting by chromosome: eval={eval_chr}, test={test_chr}")

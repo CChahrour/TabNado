@@ -6,11 +6,11 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import shap
-from matplotlib import cm, colors
 from loguru import logger
+from matplotlib import cm, colors
 
-from tabnado.utils import figure_style
 from tabnado.params import PipelineParams
+from tabnado.utils import figure_style
 
 
 def compute_xgb_shap(

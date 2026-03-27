@@ -13,6 +13,7 @@ from pytorch_tabular.config import (
 )
 from pytorch_tabular.models import GANDALFConfig
 
+from tabnado.data import load_data
 from tabnado.gandalf_sweep import _make_data_config
 from tabnado.params import PipelineParams
 from tabnado.utils import (
@@ -21,7 +22,6 @@ from tabnado.utils import (
     parse_params_arg,
     setup_logger,
 )
-from tabnado.data import load_data
 
 
 def train_final_model(

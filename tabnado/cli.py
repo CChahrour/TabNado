@@ -6,7 +6,6 @@ from tabnado.api import PipelineParams
 def run() -> None:
     """Run the full pipeline."""
     from tabnado.api import run_pipeline
-
     from tabnado.utils import parse_params_arg
 
     run_pipeline(parse_params_arg())
