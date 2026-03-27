@@ -10,7 +10,8 @@ import quantnado as qn
 import seaborn as sns
 from loguru import logger
 
-from tabnado.utils import LOAD_DATA_PARAMS, figure_style
+from tabnado.utils import figure_style
+from tabnado.params import PipelineParams
 
 
 def sliding_window(df, window_size: int, step_size: int, tile_size: int):
@@ -70,6 +71,7 @@ def get_tss_windows(
         logger.info(f"{n_after} protein-coding TSS loci")
 
     tss_windows = sliding_window(gencode_tss, window_size, step_size, tile_size)
+    Path(windows_bed).parent.mkdir(parents=True, exist_ok=True)
     tss_windows.to_bed(str(windows_bed))  # type: ignore[operator]
     n_genes = n_after
     n_windows = len(tss_windows) // n_genes if n_genes else 0
@@ -396,6 +398,7 @@ def load_or_build_datasets(
             plt.ylabel("MinMax-scaled log1p RPKM")
             plt.legend(title="Assay", bbox_to_anchor=(1.05, 1), loc="upper left")
             plt.tight_layout()
+            Path(fig_dir).mkdir(parents=True, exist_ok=True)
             plt.savefig(f"{fig_dir}/target_distributions.png")
             plt.close()
 
@@ -419,6 +422,7 @@ def load_data(
     STEP_SIZE: int = 100,
     TILE_SIZE: int = 100,
     CHUNK_SIZE_ROWS: int | None = None,
+    **_,
 ):
     DATA_DIR = f"{RES_DIR}/dataset"
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
@@ -481,13 +485,13 @@ def load_data(
 
 
 def main():
-    from tabnado.utils import load_params, parse_params_arg, setup_logger
+    from tabnado.utils import parse_params_arg, setup_logger
 
-    params = load_params(parse_params_arg())
+    params = PipelineParams.from_yaml(parse_params_arg())
     setup_logger(params["RES_DIR"], params["PROJECT"])
     logger.info("========== MAKE DATASET ==========")
     _, _, target_cols, feature_cols, train_data, eval_data, test_data = load_data(
-        **{k: params[k] for k in LOAD_DATA_PARAMS}
+        **vars(params)
     )
     logger.info(
         f"train={train_data.shape}  eval={eval_data.shape}  test={test_data.shape}"

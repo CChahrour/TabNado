@@ -112,17 +112,13 @@ def main():
     import os
 
     from tabnado.data import load_data
-    from tabnado.utils import (
-        LOAD_DATA_PARAMS,
-        load_params,
-        parse_params_arg,
-        setup_logger,
-    )
+    from tabnado.params import PipelineParams
+    from tabnado.utils import parse_params_arg, setup_logger
 
-    params = load_params(parse_params_arg())
-    setup_logger(params["RES_DIR"], params["PROJECT"])
+    params = PipelineParams.from_yaml(parse_params_arg())
+    setup_logger(params.RES_DIR, params.PROJECT)
 
-    hp_path = f"{params['RES_DIR']}/best_hyperparameters.json"
+    hp_path = f"{params.RES_DIR}/best_hyperparameters.json"
     if not os.path.exists(hp_path):
         raise FileNotFoundError(
             f"No best_hyperparameters.json found at {hp_path}. Run xgb_sweep first."
@@ -132,10 +128,10 @@ def main():
     logger.info(f"Loaded best hyperparameters from {hp_path}: {best_hp}")
 
     _, _, target_cols, feature_cols, train_data, eval_data, _ = load_data(
-        **{k: params[k] for k in LOAD_DATA_PARAMS}
+        **vars(params)
     )
     wandb_cfg = None
-    if params["LOGGING"] == "wandb":
+    if params.LOGGING == "wandb":
         from tabnado.wandb import WandbConfig
 
         wandb_cfg = WandbConfig.from_params(params)
@@ -145,7 +141,7 @@ def main():
         target_cols,
         train_data,
         eval_data,
-        RES_DIR=params["RES_DIR"],
+        RES_DIR=params.RES_DIR,
         wandb_cfg=wandb_cfg,
     )
 

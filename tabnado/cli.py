@@ -1,9 +1,12 @@
 """CLI entry points for tabnado commands."""
 
+from tabnado.api import PipelineParams
+
 
 def run() -> None:
     """Run the full pipeline."""
     from tabnado.api import run_pipeline
+
     from tabnado.utils import parse_params_arg
 
     run_pipeline(parse_params_arg())
@@ -18,9 +21,9 @@ def data() -> None:
 
 def sweep() -> None:
     """Run hyperparameter sweep stage."""
-    from tabnado.utils import load_params, parse_params_arg
+    from tabnado.utils import parse_params_arg
 
-    params = load_params(parse_params_arg())
+    params = PipelineParams.from_yaml(parse_params_arg())
     model_type = params.get("MODEL_TYPE", "gandalf")
 
     if model_type == "xgboost":
@@ -33,9 +36,9 @@ def sweep() -> None:
 
 def train() -> None:
     """Run final model training stage."""
-    from tabnado.utils import load_params, parse_params_arg
+    from tabnado.utils import parse_params_arg
 
-    params = load_params(parse_params_arg())
+    params = PipelineParams.from_yaml(parse_params_arg())
     model_type = params.get("MODEL_TYPE", "gandalf")
 
     if model_type == "xgboost":
@@ -55,9 +58,9 @@ def evaluate() -> None:
 
 def shap() -> None:
     """Run SHAP analysis stage."""
-    from tabnado.utils import load_params, parse_params_arg
+    from tabnado.utils import parse_params_arg
 
-    params = load_params(parse_params_arg())
+    params = PipelineParams.from_yaml(parse_params_arg())
     model_type = params.get("MODEL_TYPE", "gandalf")
 
     if model_type == "xgboost":

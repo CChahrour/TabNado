@@ -62,6 +62,6 @@ At runtime the code computes:
 - `PROJECT = <model_name>_<target>`
 - `RES_DIR = <output_dir>/<PROJECT>`
 - `FIG_DIR = <RES_DIR>/figures`
-- `LOGGING_DIR = <RES_DIR>/logging`
-- `DATA_DIR = <RES_DIR>/dataset`
+- `LOGGING_DIR = <RES_DIR>/logs`
+- `DATA_DIR = <RES_DIR>/data`
 - `EVAL_DIR = <RES_DIR>/evaluate`

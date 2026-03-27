@@ -11,7 +11,12 @@ from matplotlib import cm, colors
 from loguru import logger
 from pytorch_tabular import TabularModel
 
-from tabnado.utils import LOAD_DATA_PARAMS, figure_style
+from tabnado.params import PipelineParams
+from tabnado.utils import (
+    figure_style,
+    parse_params_arg,
+    setup_logger,
+)
 
 
 def compute_gandalf_shap(
@@ -316,9 +321,8 @@ def _plot_spatial_shap(
 def main():
     """CLI entry point for GANDALF SHAP analysis."""
     from tabnado.data import load_data
-    from tabnado.utils import load_params, parse_params_arg, setup_logger
 
-    params = load_params(parse_params_arg())
+    params = PipelineParams.from_yaml(parse_params_arg())
     setup_logger(params["RES_DIR"], params["PROJECT"])
     run_start = perf_counter()
     logger.info("========== GANDALF SHAP START ==========")
@@ -339,7 +343,7 @@ def main():
         raise RuntimeError("Loaded model has no weights — check model directory")
 
     _, _, target_cols, feature_cols, train_data, _, test_data = load_data(
-        **{k: params[k] for k in LOAD_DATA_PARAMS}
+        **vars(params)
     )
 
     compute_gandalf_shap(

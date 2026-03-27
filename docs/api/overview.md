@@ -5,7 +5,8 @@ Core modules in this project:
 ## Data and Utilities
 
 - `tabnado.data`: Data loading and split creation
-- `tabnado.utils`: Params loading, logging setup, feature validation, and caching utilities
+- `tabnado.params`: `PipelineParams` dataclass and `PipelineParams.from_yaml()` for loading configuration
+- `tabnado.utils`: Logging setup, CLI argument parsing, and training utilities
 - `tabnado.evaluate`: Metrics, scatter plots, and UMAP embeddings
 
 ## GANDALF Backend

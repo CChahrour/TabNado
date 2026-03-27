@@ -3,35 +3,13 @@ import random
 import sys
 from importlib import metadata
 from pathlib import Path
-import os
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
-import yaml
 from pytorch_lightning import Callback
 from loguru import logger
-
-
-LOAD_DATA_PARAMS = (
-    "DATASET",
-    "TARGET",
-    "GTF_FILE",
-    "WINDOWS_BED",
-    "EVAL_CHR",
-    "TEST_CHR",
-    "FIG_DIR",
-    "RES_DIR",
-    "MIN_TARGET",
-    "MIN_FEATURES",
-    "EXCLUDE_IPS",
-    "ASSAY_PREFIXES",
-    "WINDOW_SIZE",
-    "STEP_SIZE",
-    "TILE_SIZE",
-    "CHUNK_SIZE_ROWS",
-)
 
 
 class LoguruProgressCallback(Callback):
@@ -84,91 +62,6 @@ def parse_params_arg() -> Path:
     )
     args, _ = parser.parse_known_args()
     return args.params
-
-
-def load_params(params_path: Path | str | None = None) -> dict:
-    """Load params.yaml and return a dict with raw + derived values."""
-    if params_path is None:
-        params_path = Path(__file__).parent.parent / "params.yaml"
-    with open(params_path) as f:
-        p = yaml.safe_load(f)
-
-    required = [
-        "target",
-        "model_name",
-        "sweep_fraction",
-        "gtf_file",
-        "eval_chr",
-        "test_chr",
-        "output_dir",
-        "dataset",
-        "n_sweeps",
-        "logging",
-        "min_target",
-        "min_features",
-        "exclude_ips",
-        "prefixes",
-        "window_size",
-        "step_size",
-        "tile_size",
-    ]
-    missing = [k for k in required if k not in p]
-    for k in missing:
-        logger.warning(f"Missing required parameter: '{k}'")
-    if missing:
-        raise KeyError(f"Missing required params: {missing}")
-
-    logging_backend = str(p.get("logging", "wandb")).lower()
-    if logging_backend not in {"wandb", "tensorboard"}:
-        raise ValueError(
-            f"Invalid logging backend '{logging_backend}'. Use 'wandb' or 'tensorboard'."
-        )
-
-    model_type = str(p.get("model_name", "gandalf")).lower()
-    if model_type not in {"gandalf", "xgboost"}:
-        raise ValueError(
-            f"Invalid model_type '{model_type}'. Use 'gandalf' or 'xgboost'."
-        )
-
-    project = f"{p['model_name']}_{p['target']}"
-    res_dir = f"{p['output_dir']}/{project}"
-    fig_dir = f"{res_dir}/figures"
-    logging_dir = f"{res_dir}/logging"
-
-    data_dir = f"{res_dir}/dataset"
-    for d in [fig_dir, res_dir, logging_dir, data_dir]:
-        os.makedirs(d, exist_ok=True)
-
-    return {
-        "DATASET": p["dataset"],
-        "TARGET": p["target"],
-        "MODEL_NAME": p["model_name"],
-        "SWEEP_FRACTION": p["sweep_fraction"],
-        "N_SWEEPS": p["n_sweeps"],
-        "LOGGING": logging_backend,
-        "GTF_FILE": p["gtf_file"],
-        "WINDOWS_BED": Path(p["windows_bed"])
-        if "windows_bed" in p
-        else Path(data_dir) / "regions.bed",
-        "EVAL_CHR": p["eval_chr"],
-        "TEST_CHR": p["test_chr"],
-        "DATA_DIR": data_dir,
-        "MIN_TARGET": p["min_target"],
-        "MIN_FEATURES": p["min_features"],
-        "EXCLUDE_IPS": p["exclude_ips"],
-        "ASSAY_PREFIXES": p["prefixes"],
-        "WINDOW_SIZE": p["window_size"],
-        "STEP_SIZE": p["step_size"],
-        "TILE_SIZE": p["tile_size"],
-        "CHUNK_SIZE_ROWS": int(p["chunk_size_rows"])
-        if "chunk_size_rows" in p and p["chunk_size_rows"] is not None
-        else None,
-        "PROJECT": project,
-        "RES_DIR": res_dir,
-        "FIG_DIR": fig_dir,
-        "LOGGING_DIR": logging_dir,
-        "MODEL_TYPE": model_type,
-    }
 
 
 class _InterceptHandler(logging.Handler):

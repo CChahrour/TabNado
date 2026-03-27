@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 
+from tabnado.params import PipelineParams
+
 # ============================================================
 # Peaks / BED region pathway test
 # ============================================================
@@ -21,9 +23,8 @@ def peak_output_dir(request, worker_id):
 def test_peaks_pathway(coverage_path, peak_output_dir):
     """Test data loading using a BED peaks file instead of GTF."""
     from tabnado.data import load_data
-    from tabnado.utils import load_params, LOAD_DATA_PARAMS
 
-    params = load_params(PEAKS_PARAMS_PATH)
+    params = PipelineParams.from_yaml(PEAKS_PARAMS_PATH)
     # Override WINDOWS_BED to use the test peaks file
     params["WINDOWS_BED"] = PEAKS_BED
 
@@ -37,7 +38,7 @@ def test_peaks_pathway(coverage_path, peak_output_dir):
     Path(params["FIG_DIR"]).mkdir(parents=True, exist_ok=True)
 
     _, _, target_cols, feature_cols, train_data, eval_data, test_data = load_data(
-        **{k: params[k] for k in LOAD_DATA_PARAMS}
+        **vars(params)
     )
 
     assert len(train_data) > 0, "Expected non-empty training data for peaks pathway"

@@ -17,12 +17,14 @@ from pytorch_tabular.config import (
 from pytorch_tabular.models import GANDALFConfig
 from sklearn.metrics import mean_squared_error, r2_score
 
-from tabnado.data import stratified_sample
+from tabnado.data import load_data, stratified_sample
+from tabnado.params import PipelineParams
 from tabnado.utils import (
-    LOAD_DATA_PARAMS,
     LoguruProgressCallback,
     seed_everything,
     log_macro,
+    parse_params_arg,
+    setup_logger,
 )
 
 _LOCAL_SWEEP_BEST_HP_CACHE: dict[str, dict] = {}
@@ -429,29 +431,21 @@ def get_best_hp_from_sweep(
 
 
 def main():
-    from tabnado.data import load_data
-    from tabnado.utils import load_params, parse_params_arg, setup_logger
-
-    params = load_params(parse_params_arg())
-    setup_logger(params["RES_DIR"], params["PROJECT"])
+    params = PipelineParams.from_yaml(parse_params_arg())
+    setup_logger(params.RES_DIR, params.PROJECT)
     run_start = time.perf_counter()
     logger.info("========== GANDALF SWEEP START ==========")
     logger.info(
-        "Sweep config: project={} logging={} n_sweeps={} sweep_fraction={}".format(
-            params["PROJECT"],
-            params["LOGGING"],
-            params["N_SWEEPS"],
-            params["SWEEP_FRACTION"],
-        )
+        f"Sweep config: project={params.PROJECT} logging={params.LOGGING} n_sweeps={params.N_SWEEPS} sweep_fraction={params.SWEEP_FRACTION}"
     )
     wandb_cfg = None
-    if params["LOGGING"] == "wandb":
+    if params.LOGGING == "wandb":
         from tabnado.wandb import WandbConfig
 
         wandb_cfg = WandbConfig.from_params(params)
 
     _, _, target_cols, feature_cols, train_data, eval_data, test_data = load_data(
-        **{k: params[k] for k in LOAD_DATA_PARAMS}
+        **vars(params)
     )
 
     sweep_id = start_sweep_and_run(

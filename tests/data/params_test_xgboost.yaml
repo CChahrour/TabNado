@@ -8,7 +8,7 @@ test_chr: chr9
 output_dir: test_output/results
 dataset: test_output/data
 chunk_size_rows: 1000000
-n_sweeps: 3
+n_sweeps: 2
 logging: tensorboard
 min_target: 1
 min_features: 3

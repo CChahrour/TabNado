@@ -9,6 +9,9 @@ from loguru import logger
 from sklearn.metrics import make_scorer, r2_score
 from sklearn.model_selection import GroupKFold, KFold, RandomizedSearchCV
 from sklearn.multioutput import MultiOutputRegressor
+from tabnado.data import load_data
+from tabnado.params import PipelineParams
+from tabnado.utils import parse_params_arg, setup_logger
 
 
 def sweep_xgboost(
@@ -185,19 +188,11 @@ def sweep_xgboost(
 
 
 def main():
-    from tabnado.data import load_data
-    from tabnado.utils import (
-        LOAD_DATA_PARAMS,
-        load_params,
-        parse_params_arg,
-        setup_logger,
-    )
-
-    params = load_params(parse_params_arg())
+    params = PipelineParams.from_yaml(parse_params_arg())
     setup_logger(params["RES_DIR"], params["PROJECT"])
 
     _, _, target_cols, feature_cols, train_data, _, _ = load_data(
-        **{k: params[k] for k in LOAD_DATA_PARAMS}
+        **vars(params)
     )
 
     wandb_cfg = None

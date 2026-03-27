@@ -12,7 +12,7 @@ from pytorch_tabular import TabularModel
 from scipy.stats import spearmanr
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-from tabnado.utils import LOAD_DATA_PARAMS, figure_style
+from tabnado.utils import figure_style, parse_params_arg, setup_logger
 
 
 def evaluate_model(
@@ -188,16 +188,14 @@ def compute_umap_embeddings(
 
 def main():
     from tabnado.data import load_data
-    from tabnado.utils import load_params, parse_params_arg, setup_logger
+    from tabnado.params import PipelineParams
 
-    params = load_params(parse_params_arg())
-    setup_logger(params["RES_DIR"], params["PROJECT"])
+    params = PipelineParams.from_yaml(parse_params_arg())
+    setup_logger(params.RES_DIR, params.PROJECT)
     run_start = perf_counter()
     logger.info("========== EVALUATE START ==========")
     logger.info(
-        "Evaluate config: project={} target={} res_dir={}".format(
-            params["PROJECT"], params["TARGET"], params["RES_DIR"]
-        )
+        f"Evaluate config: project={params.PROJECT} target={params.TARGET} res_dir={params.RES_DIR}"
     )
 
     model_path = os.path.join(params["RES_DIR"], "final_model")
@@ -209,7 +207,7 @@ def main():
         raise RuntimeError("Loaded model has no weights — check model directory")
 
     _, _, target_cols, feature_cols, _, _, test_data = load_data(
-        **{k: params[k] for k in LOAD_DATA_PARAMS}
+        **vars(params)
     )
 
     evaluate_model(

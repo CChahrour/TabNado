@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tabnado.params import PipelineParams
 
 
 # ============================================================
@@ -17,18 +18,15 @@ XGB_PARAMS_PATH = TEST_DIR / "data" / "params_test_xgboost.yaml"
 
 @pytest.fixture(scope="module")
 def xgb_params(coverage_path):
-    from tabnado.utils import load_params
-
-    return load_params(XGB_PARAMS_PATH)
+    return PipelineParams.from_yaml(XGB_PARAMS_PATH)
 
 
 @pytest.fixture(scope="module")
 def xgb_loaded_data(xgb_params):
     import tabnado
-    from tabnado.utils import LOAD_DATA_PARAMS
 
     _, _, target_cols, feature_cols, train, eval_, test = tabnado.load_data(
-        **{k: xgb_params[k] for k in LOAD_DATA_PARAMS}
+        **vars(xgb_params)
     )
     return xgb_params, target_cols, feature_cols, train, eval_, test
 

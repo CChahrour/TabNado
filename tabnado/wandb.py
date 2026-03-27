@@ -96,7 +96,9 @@ def create_eval_report(
     )
     spatial_heatmap_browser = wr.MediaBrowser(
         title="Spatial SHAP heatmaps",
-        media_keys=[f"shap/spatial_heatmap_{col.replace('/', '_')}" for col in target_cols],
+        media_keys=[
+            f"shap/spatial_heatmap_{col.replace('/', '_')}" for col in target_cols
+        ],
         num_columns=min(len(target_cols), 2),
         mode="gallery",
     )
@@ -125,7 +127,9 @@ def create_eval_report(
         wr.H1(text="SHAP"),
         wr.PanelGrid(runsets=[runset], panels=[clustermap_browser]),
         wr.H2(text="Spatial analysis"),
-        wr.PanelGrid(runsets=[runset], panels=[spatial_heatmap_browser, offset_line_browser]),
+        wr.PanelGrid(
+            runsets=[runset], panels=[spatial_heatmap_browser, offset_line_browser]
+        ),
     ]
     report.save()
     return report.url

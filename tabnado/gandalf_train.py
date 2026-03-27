@@ -14,7 +14,14 @@ from pytorch_tabular.config import (
 from pytorch_tabular.models import GANDALFConfig
 
 from tabnado.gandalf_sweep import _make_data_config
-from tabnado.utils import LOAD_DATA_PARAMS, LoguruProgressCallback, log_macro
+from tabnado.params import PipelineParams
+from tabnado.utils import (
+    LoguruProgressCallback,
+    log_macro,
+    parse_params_arg,
+    setup_logger,
+)
+from tabnado.data import load_data
 
 
 def train_final_model(
@@ -107,25 +114,20 @@ def train_final_model(
 
 
 def main():
-    from tabnado.data import load_data
-    from tabnado.utils import load_params, parse_params_arg, setup_logger
-
-    params = load_params(parse_params_arg())
-    setup_logger(params["RES_DIR"], params["PROJECT"])
+    params = PipelineParams.from_yaml(parse_params_arg())
+    setup_logger(params.RES_DIR, params.PROJECT)
     run_start = time.perf_counter()
     logger.info("========== GANDALF TRAIN START ==========")
     logger.info(
-        "Train config: project={} logging={} model_name={}".format(
-            params["PROJECT"], params["LOGGING"], params["MODEL_NAME"]
-        )
+        f"Train config: project={params.PROJECT} logging={params.LOGGING} model_name={params.MODEL_NAME}"
     )
     wandb_cfg = None
-    if params["LOGGING"] == "wandb":
+    if params.LOGGING == "wandb":
         from tabnado.wandb import WandbConfig
 
         wandb_cfg = WandbConfig.from_params(params)
 
-    hp_path = f"{params['RES_DIR']}/best_hyperparameters.json"
+    hp_path = f"{params.RES_DIR}/best_hyperparameters.json"
     if not os.path.exists(hp_path):
         raise FileNotFoundError(
             f"No best_hyperparameters.json found at {hp_path}. Run gandalf_sweep.py first."
@@ -135,7 +137,7 @@ def main():
     logger.info(f"Loaded best hyperparameters from {hp_path}: {best_hp}")
 
     _, _, target_cols, feature_cols, train_data, eval_data, _ = load_data(
-        **{k: params[k] for k in LOAD_DATA_PARAMS}
+        **vars(params)
     )
     train_final_model(
         best_hp,
@@ -143,15 +145,13 @@ def main():
         target_cols,
         train_data,
         eval_data,
-        RES_DIR=params["RES_DIR"],
-        LOGGING=params["LOGGING"],
-        LOGGING_DIR=params["LOGGING_DIR"],
+        RES_DIR=params.RES_DIR,
+        LOGGING=params.LOGGING,
+        LOGGING_DIR=params.LOGGING_DIR,
         wandb_cfg=wandb_cfg,
     )
     logger.info(
-        "========== GANDALF TRAIN END ({:.2f}s total) ==========".format(
-            time.perf_counter() - run_start
-        )
+        f"========== GANDALF TRAIN END ({time.perf_counter() - run_start:.2f}s total) =========="
     )
 
 
