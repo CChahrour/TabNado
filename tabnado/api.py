@@ -51,17 +51,16 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
 
     # Setup wandb config if needed
     wandb_cfg = None
-    _wandb_run = None
     if params.LOGGING == "wandb":
-        from tabnado.wandb import WandbConfig, setup_wandb
+        from tabnado.wandb import WandbConfig
 
         wandb_cfg = WandbConfig(
             project=params.PROJECT,
             entity=params.ENTITY,
-            group=params.MODEL_TYPE,
-            dir=params.RES_DIR,
+            model_name=params.MODEL_TYPE,
+            target=params.TARGET,
+            res_dir=params.RES_DIR,
         )
-        _wandb_run = setup_wandb(wandb_cfg)
 
     if model_type == "xgboost":
         from tabnado.xgb_sweep import sweep_xgboost
@@ -164,6 +163,15 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             )
         )
 
+    # Open a fresh wandb run for evaluation + SHAP (sweep/train stages finish any prior run)
+    _eval_wandb_run = None
+    if wandb_cfg is not None:
+        _eval_wandb_run = wandb_cfg.init_run(
+            name=f"{params.PROJECT}_eval",
+            group=params.MODEL_TYPE,
+            reinit="finish_previous",
+        )
+
     # Evaluation
     stage_start = perf_counter()
     logger.info("[stage:evaluate] START evaluation/umap")
@@ -175,7 +183,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         FIG_DIR=params.FIG_DIR,
         RES_DIR=params.RES_DIR,
         model_type=model_type,
-        wandb_run=_wandb_run,
+        wandb_run=_eval_wandb_run,
     )
     compute_umap_embeddings(
         final_model,
@@ -186,7 +194,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         RES_DIR=params.RES_DIR,
         target=params.TARGET,
         model_type=model_type,
-        wandb_run=_wandb_run,
+        wandb_run=_eval_wandb_run,
     )
     logger.info(
         "[stage:evaluate] END evaluation/umap in {:.2f}s".format(
@@ -208,7 +216,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             target_cols,
             RES_DIR=params.RES_DIR,
             FIG_DIR=params.FIG_DIR,
-            wandb_run=_wandb_run,
+            wandb_run=_eval_wandb_run,
         )
     else:
         from tabnado.gandalf_shap import compute_gandalf_shap
@@ -221,16 +229,16 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             target_cols,
             RES_DIR=params.RES_DIR,
             FIG_DIR=params.FIG_DIR,
-            wandb_run=_wandb_run,
+            wandb_run=_eval_wandb_run,
         )
     logger.info(
         "[stage:shap] END shap analysis in {:.2f}s".format(perf_counter() - stage_start)
     )
 
     # W&B report
-    if _wandb_run is not None:
-        _wandb_run_id = _wandb_run.id
-        _wandb_run.finish()
+    if _eval_wandb_run is not None:
+        _wandb_run_id = _eval_wandb_run.id
+        _eval_wandb_run.finish()
         from tabnado.wandb import create_eval_report
 
         try:

@@ -20,7 +20,7 @@ class WandbConfig:
         return cls(
             project=params["PROJECT"],
             entity=params.get("ENTITY"),
-            model_name=params.get("MODEL_NAME", "model"),
+            model_name=params.get("MODEL_TYPE", "model"),
             target=params["TARGET"],
             res_dir=params["RES_DIR"],
         )
