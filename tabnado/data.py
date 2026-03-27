@@ -426,7 +426,7 @@ def load_or_build_datasets(
                 target_data_melted["feature"].str.split("-").str[0]
             )
             figure_style()
-            plt.figure(figsize=(12, 6))
+            plt.figure(figsize=(len(target_features) * 2, 6))
             sns.violinplot(
                 x="feature",
                 y="value",
@@ -435,9 +435,9 @@ def load_or_build_datasets(
                 palette="tab20",
             )
             plt.xticks(rotation=45, ha="right")
-            plt.title("Distribution of targets in training set")
-            plt.xlabel("Target")
-            plt.ylabel("MinMax-scaled log1p RPKM")
+            plt.title("Distribution of targets\nin training set")
+            plt.xlabel("")
+            plt.ylabel("MinMax-scaled\nlog1p RPKM")
             plt.legend(title="Assay", bbox_to_anchor=(1.05, 1), loc="upper left")
             plt.tight_layout()
             Path(fig_dir).mkdir(parents=True, exist_ok=True)
