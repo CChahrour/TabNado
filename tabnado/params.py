@@ -134,3 +134,6 @@ class PipelineParams:
         if not hasattr(self, key):
             raise KeyError(f"Key '{key}' does not exist in PipelineParams.")
         setattr(self, key, value)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
