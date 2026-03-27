@@ -455,7 +455,7 @@ def load_data(
     EVAL_CHR: str = "chr8",
     TEST_CHR: str = "chr9",
     FIG_DIR: str = "figures",
-    RES_DIR: str = "results",
+    DATA_DIR: str = "results/dataset",
     MIN_TARGET: int = 1,
     MIN_FEATURES: int = 10,
     EXCLUDE_IPS: list[str] | None = None,
@@ -466,7 +466,6 @@ def load_data(
     CHUNK_SIZE_ROWS: int | None = None,
     **_,
 ):
-    DATA_DIR = f"{RES_DIR}/dataset"
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
 
     ds = qn.open_dataset(DATASET)

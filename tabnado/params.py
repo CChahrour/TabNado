@@ -68,7 +68,7 @@ class PipelineParams:
         target = p.get("target")
         project = f"{model_name}_{target}"
         res_dir = f"{p['output_dir']}/{project}"
-        data_dir = f"{res_dir}/data"
+        data_dir = f"{res_dir}/dataset"
 
         windows_bed = (
             Path(p["windows_bed"])
