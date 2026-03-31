@@ -202,9 +202,17 @@ def main():
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"No model found at {model_path}. Run train.py first.")
 
-    final_model = TabularModel.load_model(model_path)
-    if final_model.model is None:
-        raise RuntimeError("Loaded model has no weights — check model directory")
+    xgb_path = os.path.join(model_path, "xgboost_model.joblib")
+    if os.path.exists(xgb_path):
+        from joblib import load
+
+        final_model = load(xgb_path)
+        model_type = "xgboost"
+    else:
+        final_model = TabularModel.load_model(model_path)
+        if final_model.model is None:
+            raise RuntimeError("Loaded model has no weights — check model directory")
+        model_type = "gandalf"
 
     _, _, target_cols, feature_cols, _, _, test_data = load_data(**vars(params))
 
@@ -212,8 +220,10 @@ def main():
         final_model,
         test_data,
         target_cols,
+        feature_cols=feature_cols,
         FIG_DIR=params["FIG_DIR"],
         RES_DIR=params["RES_DIR"],
+        model_type=model_type,
     )
     compute_umap_embeddings(
         final_model,
@@ -223,6 +233,7 @@ def main():
         FIG_DIR=params["FIG_DIR"],
         RES_DIR=params["RES_DIR"],
         target=params["TARGET"],
+        model_type=model_type,
     )
     logger.info(
         "========== EVALUATE END ({:.2f}s total) ==========".format(

@@ -119,7 +119,7 @@ def main():
     run_start = time.perf_counter()
     logger.info("========== GANDALF TRAIN START ==========")
     logger.info(
-        f"Train config: project={params.PROJECT} logging={params.LOGGING} model_name={params.MODEL_NAME}"
+        f"Train config: project={params.PROJECT} logging={params.LOGGING} model_name={params.MODEL_TYPE}"
     )
     wandb_cfg = None
     if params.LOGGING == "wandb":
