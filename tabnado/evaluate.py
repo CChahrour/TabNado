@@ -202,10 +202,10 @@ def main():
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"No model found at {model_path}. Run train.py first.")
 
-    xgb_path = os.path.join(model_path, "xgboost_model.joblib")
-    if os.path.exists(xgb_path):
+    if params.MODEL_TYPE == "xgboost":
         from joblib import load
 
+        xgb_path = os.path.join(model_path, "xgboost_model.joblib")
         final_model = load(xgb_path)
         model_type = "xgboost"
     else:
