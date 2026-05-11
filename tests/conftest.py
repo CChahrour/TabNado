@@ -19,38 +19,47 @@ def params():
     return PipelineParams.from_yaml(params_path)
 
 
+@pytest.fixture
+def worker_id(request):
+    worker_input = getattr(request.config, "workerinput", None)
+    if isinstance(worker_input, dict):
+        return worker_input.get("workerid", "master")
+    return "master"
+
+
 @pytest.fixture(scope="session")
 def coverage_path(params):
-    """Ensure the QuantNado zarr store exists before any test that needs it."""
-    from tests.make_test_dataset import create_test_dataset
+    """Ensure per-sample zarr stores exist in the dataset directory."""
+    from tests.make_test_dataset import SAMPLE_NAMES, create_test_dataset
 
-    path = Path(params["DATASET"]) / "coverage.zarr"
+    dataset_dir = Path(params["DATASET"])
 
-    logging.debug(f"DATASET value in test fixture: {params['DATASET']}")
-
-    def _ready(zarr_path: Path) -> bool:
-        if not zarr_path.exists() or not (zarr_path / "zarr.json").exists():
+    def _ready(d: Path) -> bool:
+        if not d.is_dir():
             return False
         try:
-            group = zarr.open_group(str(zarr_path), mode="r")
-            _ = group.attrs["sample_names"]
-            _ = group.attrs["chromsizes"]
-            _ = group.attrs["chunk_len"]
+            for name in SAMPLE_NAMES:
+                zp = d / f"{name}.zarr"
+                if not zp.exists():
+                    return False
+                root = zarr.open_group(str(zp), mode="r")
+                if "assay" not in root.attrs or "sample" not in root.attrs:
+                    return False
             return True
         except Exception:
             return False
 
-    if _ready(path):
-        return path
+    if _ready(dataset_dir):
+        return dataset_dir
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.parent / ".coverage.zarr.lock"
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = dataset_dir / ".dataset.lock"
     start = time.monotonic()
     timeout_s = 120
     lock_acquired = False
 
     while True:
-        if _ready(path):
+        if _ready(dataset_dir):
             break
         try:
             fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -64,17 +73,17 @@ def coverage_path(params):
 
     if lock_acquired:
         try:
-            if not _ready(path):
-                if path.exists():
-                    shutil.rmtree(path, ignore_errors=True)
-                create_test_dataset(path)
+            if not _ready(dataset_dir):
+                for p in dataset_dir.glob("*.zarr"):
+                    shutil.rmtree(p, ignore_errors=True)
+                create_test_dataset(dataset_dir)
         finally:
             lock_path.unlink(missing_ok=True)
 
-    if not _ready(path):
-        raise RuntimeError(f"Test dataset creation failed: {path}")
+    if not _ready(dataset_dir):
+        raise RuntimeError(f"Test dataset creation failed: {dataset_dir}")
 
-    return path
+    return dataset_dir
 
 
 @pytest.fixture(scope="session")

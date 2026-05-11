@@ -206,9 +206,8 @@ def get_samples(
     assay_prefixes_norm = [str(x).strip().upper() for x in prefixes if str(x).strip()]
     exclude_ips = exclude_ips or []
 
-    metadata = ds.get_metadata()
-    metadata["assay"] = metadata.index.str.split("-").str[0].str.upper()
-    factors = metadata[metadata.assay.isin(assay_prefixes_norm)].copy()
+    metadata = ds.metadata
+    factors = metadata[metadata["assay"].isin(assay_prefixes_norm)].copy()
 
     if factors.empty:
         raise ValueError(
@@ -217,15 +216,14 @@ def get_samples(
             )
         )
     factors["cell_type"] = (
-        factors.index.str.split("_")
+        factors["sample_id"].str.split("_")
         .str[0]
         .str.split("-")
         .str[1:]
         .str.join("-")
         .str.replace(r"-\d$", "", regex=True)
     )
-    factors["ip"] = factors.index.str.split("_").str[1]
-    factors = factors[~factors.ip.isin(exclude_ips)]
+    factors = factors[~factors["ip"].isin(exclude_ips)]
 
     sample_counts = factors[["assay", "cell_type", "ip"]].value_counts()
     sample_counts = sample_counts.reset_index(name="count").sort_values(
@@ -248,14 +246,14 @@ def get_samples(
         .nunique()
     )
     factors_model = factors[
-        factors.cell_type.isin(
+        factors["cell_type"].isin(
             model_samples[
-                (model_samples.target >= min_target)
-                & (model_samples.n_feature_ips >= min_features)
+                (model_samples.get("target", 0) >= min_target)
+                & (model_samples["n_feature_ips"] >= min_features)
             ].index
         )
     ]
-    samples = factors_model.index.tolist()
+    samples = factors_model["sample_id"].tolist()
     target_cols = [s for s in samples if target in s]
     feature_cols = [s for s in samples if target not in s]
     return samples, target_cols, feature_cols

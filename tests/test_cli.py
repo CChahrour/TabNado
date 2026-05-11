@@ -1,3 +1,4 @@
+import shutil
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ def cli_output_dir(request):
     if isinstance(worker_input, dict):
         worker = worker_input.get("workerid", worker)
     out_dir = Path("test_output") / "cli" / worker / request.node.name
+    shutil.rmtree(out_dir, ignore_errors=True)
     out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir
 

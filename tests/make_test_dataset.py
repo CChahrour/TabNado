@@ -4,9 +4,8 @@ from pathlib import Path
 
 import numpy as np
 import zarr
-from quantnado.dataset.store_bam import _compute_sample_hash
 
-DEFAULT_OUT = Path(__file__).parent / "data" / "dataset" / "coverage.zarr"
+DEFAULT_OUT = Path(__file__).parent / "data" / "dataset"
 
 TARGET_STR = "TEST"
 
@@ -27,91 +26,96 @@ CHROMSIZES = {
     "chr9": 20_000,
 }
 CHUNK_LEN = 65_536
-N = len(SAMPLE_NAMES)
 
 
-def create_test_dataset(out: Path | None = None) -> Path:
-    out_path = out or DEFAULT_OUT
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    if out_path.exists():
-        return out_path
+def _parse_sample_name(name: str) -> tuple[str, str]:
+    """Return (assay, ip) from a name like 'ChIP-CELL_H3K4me3'."""
+    assay = name.split("-")[0]
+    ip = name.rsplit("_", 1)[-1] if "_" in name else ""
+    return assay, ip
 
-    rng = np.random.default_rng(42)
+
+def _make_sample_zarr(
+    out_path: Path,
+    sample_name: str,
+    assay: str,
+    ip: str,
+    signal: dict[str, np.ndarray],
+    rng: np.random.Generator,
+) -> None:
     root = zarr.open_group(str(out_path), mode="w", zarr_format=3)
 
-    target_indices = [i for i, s in enumerate(SAMPLE_NAMES) if TARGET_STR in s]
-    feature_indices = [i for i, s in enumerate(SAMPLE_NAMES) if TARGET_STR not in s]
-
-    # Chromosome arrays are stored as (sample x position).
-    for chrom, size in CHROMSIZES.items():
-        arr = root.create_array(
-            name=chrom,
-            shape=(N, size),
+    for chrom, data in signal.items():
+        chrom_group = root.require_group(chrom)
+        arr = chrom_group.create_array(
+            name="coverage",
+            shape=(1, len(data)),
             chunks=(1, CHUNK_LEN),
             dtype=np.uint16,
             fill_value=0,
         )
-        # Build a smooth latent signal by generating coarse values every 500bp
-        # then linearly interpolating, so structure spans window/tile scales.
-        coarse_size = size // 500 + 2
-        coarse = rng.uniform(2, 12, size=coarse_size)
-        coarse_x = np.linspace(0, size - 1, coarse_size)
-        fine_x = np.arange(size)
-        latent = np.interp(fine_x, coarse_x, coarse)
+        arr[0, :] = data
 
-        data = np.zeros((N, size), dtype=np.uint16)
-        for i in target_indices:
-            noise = rng.normal(0, 0.5, size=size)
-            data[i] = np.clip(latent + noise, 0, 65535).astype(np.uint16)
-        for i in feature_indices:
-            noise = rng.normal(0, 1.5, size=size)
-            data[i] = np.clip(latent + noise, 0, 65535).astype(np.uint16)
-        arr[:] = data
-
-    meta = root.create_group("metadata")
-
-    completed = meta.create_array("completed", shape=(N,), dtype=bool, fill_value=False)
-    completed[:] = [True] * N
-
-    total_reads = meta.create_array(
-        "total_reads", shape=(N,), dtype=np.int64, fill_value=0
-    )
-    total_reads[:] = rng.integers(500_000, 2_000_000, size=N)
-
+    meta = root.require_group("metadata")
+    completed = meta.create_array("completed", shape=(1,), dtype=bool, fill_value=False)
+    completed[0] = True
+    total_reads = meta.create_array("total_reads", shape=(1,), dtype=np.int64, fill_value=0)
+    total_reads[0] = int(rng.integers(500_000, 2_000_000))
     mean_read_length = meta.create_array(
-        "mean_read_length", shape=(N,), dtype=np.float32, fill_value=np.nan
+        "mean_read_length", shape=(1,), dtype=np.float32, fill_value=np.nan
     )
-    mean_read_length[:] = np.full(N, 100.0, dtype=np.float32)
-
-    sparsity = meta.create_array(
-        "sparsity", shape=(N,), dtype=np.float32, fill_value=np.nan
-    )
-    sparsity[:] = rng.uniform(20, 80, size=N).astype(np.float32)
-
-    sample_hashes = meta.create_array(
-        "sample_hashes", shape=(N, 16), dtype=np.uint8, fill_value=0
-    )
-    sample_hashes[:] = rng.integers(0, 255, size=(N, 16), dtype=np.uint8)
+    mean_read_length[0] = np.float32(100.0)
+    sparsity = meta.create_array("sparsity", shape=(1,), dtype=np.float32, fill_value=np.nan)
+    sparsity[0] = np.float32(rng.uniform(20, 80))
 
     root.attrs.update(
         {
-            "chromosomes": CHROMOSOMES,
+            "assay": assay,
+            "sample": sample_name,
+            "ip": ip,
+            "stranded": "",
             "chromsizes": CHROMSIZES,
-            "n_samples": N,
             "chunk_len": CHUNK_LEN,
-            "construction_compression": "default",
-            "structure": "per-chromosome (sample x position)",
+            "chromosomes": CHROMOSOMES,
             "bin_size": 1,
-            "sample_names": SAMPLE_NAMES,
-            "sample_names_hash": _compute_sample_hash(SAMPLE_NAMES),
-            "stranded": {s: "" for s in SAMPLE_NAMES},
+            "construction_compression": "default",
         }
     )
 
-    print(f"Created {out_path}")
-    print(f"  samples ({N}): {SAMPLE_NAMES}")
+
+def create_test_dataset(out: Path | None = None) -> Path:
+    out_dir = out or DEFAULT_OUT
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Skip if all expected zarr stores already exist.
+    expected = [out_dir / f"{name}.zarr" for name in SAMPLE_NAMES]
+    if all(p.exists() for p in expected):
+        return out_dir
+
+    rng = np.random.default_rng(42)
+
+    target_set = {n for n in SAMPLE_NAMES if TARGET_STR in n}
+
+    for sample_name in SAMPLE_NAMES:
+        assay, ip = _parse_sample_name(sample_name)
+        is_target = sample_name in target_set
+        signal: dict[str, np.ndarray] = {}
+        for chrom, size in CHROMSIZES.items():
+            coarse_size = size // 500 + 2
+            coarse = rng.uniform(2, 12, size=coarse_size)
+            coarse_x = np.linspace(0, size - 1, coarse_size)
+            latent = np.interp(np.arange(size), coarse_x, coarse)
+            noise_std = 0.5 if is_target else 1.5
+            noise = rng.normal(0, noise_std, size=size)
+            signal[chrom] = np.clip(latent + noise, 0, 65535).astype(np.uint16)
+
+        zarr_path = out_dir / f"{sample_name}.zarr"
+        _make_sample_zarr(zarr_path, sample_name, assay, ip, signal, rng)
+
+    print(f"Created {len(SAMPLE_NAMES)} per-sample zarr stores in {out_dir}")
+    print(f"  samples: {SAMPLE_NAMES}")
     print(f"  chromosomes: {CHROMOSOMES}")
-    return out_path
+    return out_dir
 
 
 if __name__ == "__main__":
