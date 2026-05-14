@@ -1,18 +1,26 @@
 import json
 import os
+import tempfile
 from time import perf_counter
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import umap
 from loguru import logger
-from pytorch_tabular import TabularModel
 from scipy.stats import spearmanr
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from tabnado.utils import figure_style, parse_params_arg, setup_logger
+
+
+def _get_umap_cls():
+    os.environ.setdefault(
+        "NUMBA_CACHE_DIR", os.path.join(tempfile.gettempdir(), "tabnado-numba-cache")
+    )
+    from umap import UMAP
+
+    return UMAP
 
 
 def evaluate_model(
@@ -154,7 +162,7 @@ def compute_umap_embeddings(
             )
         else:
             n_neighbors = min(15, n_samples - 1)
-            proj = umap.UMAP(
+            proj = _get_umap_cls()(
                 n_neighbors=n_neighbors, min_dist=0.1, random_state=42
             ).fit_transform(E)  # type: ignore[assignment]
         proj_df = pd.DataFrame(np.asarray(proj), columns=["UMAP1", "UMAP2"])
@@ -209,6 +217,8 @@ def main():
         final_model = load(xgb_path)
         model_type = "xgboost"
     else:
+        from pytorch_tabular import TabularModel
+
         final_model = TabularModel.load_model(model_path)
         if final_model.model is None:
             raise RuntimeError("Loaded model has no weights — check model directory")

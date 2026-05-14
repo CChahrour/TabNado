@@ -23,6 +23,7 @@ def sweep_xgboost(
     sweep_fraction: float = 0.1,
     RES_DIR: str = "results",
     seed: int = 42,
+    n_jobs: int = 1,
     wandb_cfg=None,
     **kwargs,
 ) -> dict:
@@ -114,6 +115,21 @@ def sweep_xgboost(
         fit_kwargs = {}
         cv_desc = f"{n_splits}-fold KFold (single chromosome group in sweep subset)"
 
+    min_cv_samples = max(10, n_splits * 4)
+    if len(X_tune) < min_cv_samples:
+        best_hp = _default_best_hp()
+        logger.warning(
+            "XGBoost HP sweep skipped: {} samples is too few for stable {}. "
+            "Using deterministic default hyperparameters.".format(
+                len(X_tune), cv_desc
+            )
+        )
+        out_path = Path(RES_DIR) / "best_hyperparameters.json"
+        with open(out_path, "w") as f:
+            json.dump(best_hp, f, indent=2)
+        logger.info(f"Saved best hyperparameters to {out_path}")
+        return best_hp
+
     r2_macro = make_scorer(
         r2_score,
         greater_is_better=True,
@@ -126,7 +142,7 @@ def sweep_xgboost(
         n_iter=n_sweeps,
         scoring=r2_macro,
         cv=cv,
-        n_jobs=-1,
+        n_jobs=n_jobs,
         verbose=1,
         random_state=seed,
         refit=False,

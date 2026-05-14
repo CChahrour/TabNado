@@ -7,8 +7,8 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "TabNado"
-version = "0.1.0"
+name = "tabnado"
+version = "0.0.1"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "einops==0.8.2",
@@ -19,7 +19,7 @@ dependencies = [
     "matplotlib>=3.10,<4",
     "numba==0.65.1",
     "numpy>=2,<=2.2.6",
-    "pandas",
+    "pandas>=2,<3.0.0",
     "pyranges1==1.3.8",
     "pyyaml",
     "quantnado>=0.4.4",
@@ -29,6 +29,7 @@ dependencies = [
     "shap==0.51.0",
     "torch==2.11.0",
     "pytorch-lightning>=2.0.0,<2.7.0",
+    "pytorch-tabular==1.2.0",
     "torchmetrics>=0.10.0,<1.9.0",
     "umap-learn==0.5.12",
     "tensorboard",

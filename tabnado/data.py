@@ -7,6 +7,7 @@ import pandas as pd
 import pyranges1 as pr
 import quantnado as qn
 import seaborn as sns
+import xarray as xr
 from loguru import logger
 from sklearn.preprocessing import MinMaxScaler
 
@@ -97,6 +98,29 @@ def build_signal_df(
         4. log1p (numpy)
         5. MinMax [0, 1] per column (sklearn MinMaxScaler)
     """
+
+    def _reduce_signal():
+        try:
+            return ds.reduce(
+                ranges_df=tss_windows, samples=samples, modality="coverage"
+            )
+        except IndexError as exc:
+            if "boolean index did not match indexed array" not in str(exc):
+                raise
+            logger.warning(
+                "QuantNado multi-sample reduce failed for this store layout; "
+                "falling back to per-sample reduction"
+            )
+            reduced = [
+                ds.subset(samples=[sample]).reduce(
+                    ranges_df=tss_windows, modality="coverage"
+                )
+                for sample in samples
+            ]
+            if not reduced:
+                raise ValueError("No samples available for signal reduction") from exc
+            return xr.concat(reduced, dim="sample")
+
     if rpkm_path and os.path.exists(rpkm_path):
         logger.info(f"Loading cached RPKM array from {rpkm_path}")
         rpkm_df = pd.read_parquet(rpkm_path)
@@ -105,17 +129,17 @@ def build_signal_df(
         sample_names = rpkm_df.columns.values
     else:
         logger.info("Extracting signal from dataset")
-        binned_signal = ds.reduce(ranges_df=tss_windows, samples=samples)
-        if ds.coverage is None:
+        binned_signal = _reduce_signal()
+        if not hasattr(ds, "library_sizes"):
             raise RuntimeError(
-                "Dataset has no coverage data — cannot compute library sizes"
+                "Dataset cannot provide library sizes for RPKM normalisation"
             )
-        library_sizes = ds.coverage.library_sizes
+        library_sizes = ds.library_sizes(samples=samples)
 
         logger.info("Normalising to RPKM")
-        rpkm_signal = qn.normalise(
-            data=binned_signal["mean"], method="rpkm", library_sizes=library_sizes
-        )
+        rpkm_signal = ds.normalise(
+            binned_signal, method="rpkm", library_sizes=library_sizes
+        )["mean"]
 
         n_rows, n_samples = rpkm_signal.data.shape
         if chunk_size_rows is None or int(chunk_size_rows) <= 0:

@@ -50,7 +50,7 @@ def train_xgboost(
             objective="reg:squarederror",
             tree_method="hist",
             max_bin=256,
-            n_jobs=-1,
+            n_jobs=1,
             random_state=42,
             verbosity=0,
             early_stopping_rounds=early_stopping_rounds,
