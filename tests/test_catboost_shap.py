@@ -39,6 +39,8 @@ def test_catboost_shap_supports_classification_artifact(
     monkeypatch,
     tmp_path: Path,
 ):
+    observed_n_samples = []
+
     class FakePool:
         def __init__(self, data, feature_names=None):
             self.data = data
@@ -48,6 +50,7 @@ def test_catboost_shap_supports_classification_artifact(
         def get_feature_importance(self, pool, type):
             assert type == "ShapValues"
             n_samples = len(pool.data)
+            observed_n_samples.append(n_samples)
             n_features = len(pool.feature_names)
             values = np.arange(n_samples * (n_features + 1), dtype=float)
             return values.reshape(n_samples, n_features + 1)
@@ -57,12 +60,14 @@ def test_catboost_shap_supports_classification_artifact(
     monkeypatch.setitem(sys.modules, "catboost", fake_catboost)
 
     feature_cols = ["ChIP_A_-100", "ChIP_A_0", "ChIP_B_-100", "ChIP_B_0"]
+    n_rows = 1005
     train_data = pd.DataFrame(
-        np.arange(8 * len(feature_cols)).reshape(8, len(feature_cols)),
+        np.arange(n_rows * len(feature_cols)).reshape(n_rows, len(feature_cols)),
         columns=feature_cols,
     )
-    train_data["label"] = ["cold", "hot"] * 4
-    test_data = train_data.copy()
+    train_data["label"] = ["cold", "hot"] * (n_rows // 2) + ["cold"] * (n_rows % 2)
+    eval_data = train_data.iloc[:2].copy()
+    test_data = train_data.iloc[:3].copy()
 
     res_dir = tmp_path / "results"
     fig_dir = tmp_path / "figures"
@@ -77,12 +82,14 @@ def test_catboost_shap_supports_classification_artifact(
         test_data,
         feature_cols,
         ["label"],
+        eval_data=eval_data,
         RES_DIR=str(res_dir),
         FIG_DIR=str(fig_dir),
         task="classification",
     )
 
     mean_abs = pd.read_csv(res_dir / "shap" / "shap_mean_abs.csv", index_col=0)
+    assert observed_n_samples == [len(train_data) + len(eval_data) + len(test_data)]
     assert list(mean_abs.columns) == ["label_hot"]
     assert list(mean_abs.index) == feature_cols
     assert (fig_dir / "shap_clustermap.png").exists()

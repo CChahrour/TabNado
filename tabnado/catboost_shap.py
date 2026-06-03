@@ -71,6 +71,7 @@ def compute_catboost_shap(
     test_data: pd.DataFrame,
     feature_cols: list[str],
     target_cols: list[str],
+    eval_data: pd.DataFrame | None = None,
     RES_DIR: str = "results",
     FIG_DIR: str = "figures",
     tile_size: int = 100,
@@ -97,15 +98,18 @@ def compute_catboost_shap(
         else resolve_task(task, train_data, target_cols)
     )
 
-    X_test_sub = test_data[feature_cols].sample(
-        n=min(1000, len(test_data)), random_state=42
+    shap_data = (
+        pd.concat([train_data, eval_data, test_data], axis=0)
+        if eval_data is not None
+        else pd.concat([train_data, test_data], axis=0)
     )
+    X_regions = shap_data[feature_cols]
     logger.info(
-        "Computing SHAP values for CatBoost (test_subset={})".format(len(X_test_sub))
+        "Computing SHAP values for CatBoost (shap_regions={})".format(len(X_regions))
     )
 
     Pool = _import_catboost_pool()
-    pool = Pool(X_test_sub, feature_names=feature_cols)
+    pool = Pool(X_regions, feature_names=feature_cols)
 
     sv_list: list[np.ndarray] = []
     if is_classifier_artifact:
@@ -212,7 +216,7 @@ def compute_catboost_shap(
         sv_list,
         feature_cols,
         output_cols,
-        X_test_sub.index,
+        X_regions.index,
         SHAP_DIR,
         FIG_DIR,
         tile_size,
@@ -246,7 +250,7 @@ def main():
 
     final_model = load(model_path)
 
-    _, _, target_cols, feature_cols, train_data, _, test_data = load_data(
+    _, _, target_cols, feature_cols, train_data, eval_data, test_data = load_data(
         **vars(params)
     )
     task = resolve_task(params["TASK"], train_data, target_cols)
@@ -257,6 +261,7 @@ def main():
         test_data,
         feature_cols,
         target_cols,
+        eval_data=eval_data,
         RES_DIR=params["RES_DIR"],
         FIG_DIR=params["FIG_DIR"],
         task=task,

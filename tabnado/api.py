@@ -323,6 +323,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             test_data,
             feature_cols,
             target_cols,
+            eval_data=eval_data,
             RES_DIR=params.RES_DIR,
             FIG_DIR=params.FIG_DIR,
             task=task,
@@ -337,6 +338,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             test_data,
             feature_cols,
             target_cols,
+            eval_data=eval_data,
             RES_DIR=params.RES_DIR,
             FIG_DIR=params.FIG_DIR,
             task=task,
@@ -351,6 +353,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             test_data,
             feature_cols,
             target_cols,
+            eval_data=eval_data,
             RES_DIR=params.RES_DIR,
             FIG_DIR=params.FIG_DIR,
             task=task,
@@ -601,7 +604,7 @@ def run_shap(params_path: ParamsPath = None) -> None:
     if not model_path.exists():
         raise FileNotFoundError(f"No model found at {model_path}. Run train first.")
 
-    _, _, target_cols, feature_cols, train_data, _, test_data = load_data(
+    _, _, target_cols, feature_cols, train_data, eval_data, test_data = load_data(
         **vars(params)
     )
     task = resolve_task(params.TASK, train_data, target_cols)
@@ -617,6 +620,7 @@ def run_shap(params_path: ParamsPath = None) -> None:
             test_data,
             feature_cols,
             target_cols,
+            eval_data=eval_data,
             RES_DIR=params.RES_DIR,
             FIG_DIR=params.FIG_DIR,
             task=task,
@@ -632,6 +636,7 @@ def run_shap(params_path: ParamsPath = None) -> None:
             test_data,
             feature_cols,
             target_cols,
+            eval_data=eval_data,
             RES_DIR=params.RES_DIR,
             FIG_DIR=params.FIG_DIR,
             task=task,
@@ -649,6 +654,7 @@ def run_shap(params_path: ParamsPath = None) -> None:
             test_data,
             feature_cols,
             target_cols,
+            eval_data=eval_data,
             RES_DIR=params.RES_DIR,
             FIG_DIR=params.FIG_DIR,
             task=task,

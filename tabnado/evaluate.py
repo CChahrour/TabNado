@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from loguru import logger
+from matplotlib.colors import BoundaryNorm, ListedColormap
+from matplotlib.lines import Line2D
 from scipy.stats import spearmanr
 from sklearn.metrics import (
     auc,
@@ -22,6 +24,8 @@ from sklearn.preprocessing import label_binarize
 from tabnado.tasks import classification_metrics, json_safe, resolve_task
 from tabnado.utils import figure_style, parse_params_arg, setup_logger
 
+UMAP_CATEGORICAL_PALETTE_LIMIT = 20
+
 
 def _get_umap_cls():
     os.environ.setdefault(
@@ -30,6 +34,36 @@ def _get_umap_cls():
     from umap import UMAP
 
     return UMAP
+
+
+def _limit_categorical_labels(
+    labels: pd.Series,
+    max_categories: int = UMAP_CATEGORICAL_PALETTE_LIMIT,
+) -> pd.Categorical:
+    """Return display labels capped to a fixed palette size."""
+    labels = pd.Series(labels).astype(str)
+    max_categories = max(1, int(max_categories))
+    counts = labels.value_counts()
+
+    if len(counts) <= max_categories:
+        categories = sorted(counts.index.astype(str))
+        return pd.Categorical(labels, categories=categories, ordered=True)
+
+    if max_categories == 1:
+        display_labels = pd.Series(["Other"] * len(labels), index=labels.index)
+        categories = ["Other"]
+    else:
+        keep_labels = list(counts.head(max_categories - 1).index.astype(str))
+        display_labels = labels.where(labels.isin(keep_labels), "Other")
+        categories = keep_labels + ["Other"]
+
+    logger.info(
+        "UMAP categorical palette limited from {} labels to {} displayed groups".format(
+            len(counts),
+            len(categories),
+        )
+    )
+    return pd.Categorical(display_labels, categories=categories, ordered=True)
 
 
 def _plot_roc_curve(
@@ -427,19 +461,53 @@ def compute_umap_embeddings(
 
     fig, ax = plt.subplots(figsize=(6, 5))
     if task == "classification":
-        label_codes = proj_df["true_label_code"].to_numpy()
+        display_labels = _limit_categorical_labels(proj_df["true_label"])
+        labels = list(display_labels.categories)
+        label_codes = display_labels.codes
+
+        tab20_colors = list(plt.get_cmap("tab20").colors)
+        if labels and labels[-1] == "Other":
+            colors = tab20_colors[: max(len(labels) - 1, 0)] + [(0.45, 0.45, 0.45)]
+        else:
+            colors = tab20_colors[: len(labels)]
+        cmap = ListedColormap(colors)
+        norm = BoundaryNorm(np.arange(-0.5, len(labels) + 0.5), cmap.N)
+
         sc = ax.scatter(
             proj_df.UMAP1,
             proj_df.UMAP2,
             c=label_codes,
-            cmap="tab10",
+            cmap=cmap,
+            norm=norm,
             s=5,
             alpha=0.7,
         )
-        labels = list(pd.Categorical(proj_df["true_label"]).categories)
-        cbar = plt.colorbar(sc, ax=ax, ticks=np.arange(len(labels)))
-        cbar.ax.set_yticklabels(labels)
-        cbar.set_label(target or target_cols[0])
+        handles = []
+        for idx, label_name in enumerate(labels):
+            legend_label = label_name
+            if label_name == "Other":
+                legend_label = f"Other ({int((display_labels == 'Other').sum())})"
+            handles.append(
+                Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    linestyle="",
+                    markersize=5,
+                    markerfacecolor=cmap(idx),
+                    markeredgecolor="none",
+                    label=legend_label,
+                )
+            )
+        ax.legend(
+            handles=handles,
+            title=target or target_cols[0],
+            bbox_to_anchor=(1.02, 1),
+            loc="upper left",
+            borderaxespad=0,
+            fontsize=8,
+            title_fontsize=9,
+        )
     else:
         sc = ax.scatter(
             proj_df.UMAP1,

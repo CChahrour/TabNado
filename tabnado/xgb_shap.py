@@ -35,6 +35,7 @@ def compute_xgb_shap(
     test_data: pd.DataFrame,
     feature_cols: list[str],
     target_cols: list[str],
+    eval_data: pd.DataFrame | None = None,
     RES_DIR: str = "results",
     FIG_DIR: str = "figures",
     tile_size: int = 100,
@@ -61,13 +62,16 @@ def compute_xgb_shap(
         else resolve_task(task, train_data, target_cols)
     )
 
-    X_bg = train_data[feature_cols].sample(min(1000, len(train_data)), random_state=42)
-    X_test_sub = test_data[feature_cols].sample(
-        n=min(1000, len(test_data)), random_state=42
+    X_bg = train_data[feature_cols]
+    shap_data = (
+        pd.concat([train_data, eval_data, test_data], axis=0)
+        if eval_data is not None
+        else pd.concat([train_data, test_data], axis=0)
     )
+    X_regions = shap_data[feature_cols]
     logger.info(
-        "Computing SHAP values for XGBoost (background={}, test_subset={})".format(
-            len(X_bg), len(X_test_sub)
+        "Computing SHAP values for XGBoost (background={}, shap_regions={})".format(
+            len(X_bg), len(X_regions)
         )
     )
 
@@ -80,7 +84,7 @@ def compute_xgb_shap(
     for booster in estimators:
         _force_single_thread_xgboost(booster)
         explainer = shap.Explainer(booster, X_bg)
-        ex = explainer(X_test_sub, check_additivity=False)
+        ex = explainer(X_regions, check_additivity=False)
         sv_list.extend(shap_values_to_output_list(ex))
 
     if not sv_list:
@@ -186,7 +190,7 @@ def compute_xgb_shap(
         sv_list,
         feature_cols,
         output_cols,
-        X_test_sub.index,
+        X_regions.index,
         SHAP_DIR,
         FIG_DIR,
         tile_size,
@@ -364,7 +368,7 @@ def main():
 
     final_model = load(os.path.join(model_path, "xgboost_model.joblib"))
 
-    _, _, target_cols, feature_cols, train_data, _, test_data = load_data(
+    _, _, target_cols, feature_cols, train_data, eval_data, test_data = load_data(
         **vars(params)
     )
     task = resolve_task(params["TASK"], train_data, target_cols)
@@ -375,6 +379,7 @@ def main():
         test_data,
         feature_cols,
         target_cols,
+        eval_data=eval_data,
         RES_DIR=params["RES_DIR"],
         FIG_DIR=params["FIG_DIR"],
         task=task,

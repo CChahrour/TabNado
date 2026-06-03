@@ -3,7 +3,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from tabnado.evaluate import _plot_roc_curve
+from tabnado.evaluate import (
+    _limit_categorical_labels,
+    _plot_roc_curve,
+    compute_umap_embeddings,
+)
 
 
 def test_plot_roc_curve_binary(tmp_path: Path):
@@ -63,3 +67,52 @@ def test_plot_roc_curve_multiclass(tmp_path: Path):
     assert (fig_dir / "roc_curve_label.png").exists()
     auc_df = pd.read_csv(eval_dir / "roc_auc.csv")
     assert set(auc_df["class"]) == {"a", "b", "c", "micro", "macro"}
+
+
+def test_limit_categorical_labels_groups_low_frequency_values():
+    labels = pd.Series(
+        ["a"] * 5
+        + ["b"] * 4
+        + ["c"] * 3
+        + ["d"] * 2
+        + ["e"]
+    )
+
+    display = _limit_categorical_labels(labels, max_categories=4)
+
+    assert list(display.categories) == ["a", "b", "c", "Other"]
+    assert list(pd.Series(display).value_counts().index)[:3] == ["a", "b", "c"]
+    assert int((display == "Other").sum()) == 3
+
+
+def test_compute_umap_embeddings_limits_classification_palette_from_cache(
+    tmp_path: Path,
+):
+    fig_dir = tmp_path / "figures"
+    eval_dir = tmp_path / "results" / "evaluate"
+    fig_dir.mkdir()
+    eval_dir.mkdir(parents=True)
+
+    labels = [f"class_{idx:02d}" for idx in range(25)]
+    pd.DataFrame(
+        {
+            "UMAP1": np.arange(len(labels), dtype=float),
+            "UMAP2": np.zeros(len(labels), dtype=float),
+            "true_label": labels,
+            "true_label_code": np.arange(len(labels), dtype=int),
+        }
+    ).to_parquet(eval_dir / "embeddings_umap.parquet")
+
+    compute_umap_embeddings(
+        final_model=object(),
+        test_data=pd.DataFrame({"label": labels}),
+        feature_cols=["feature"],
+        target_cols=["label"],
+        FIG_DIR=str(fig_dir),
+        RES_DIR=str(tmp_path / "results"),
+        target="label",
+        model_type="gandalf",
+        task="classification",
+    )
+
+    assert (fig_dir / "embeddings_umap.png").exists()

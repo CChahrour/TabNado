@@ -59,6 +59,7 @@ def compute_gandalf_shap(
     test_data: pd.DataFrame,
     feature_cols: list[str],
     target_cols: list[str],
+    eval_data: pd.DataFrame | None = None,
     RES_DIR: str = "results",
     FIG_DIR: str = "figures",
     tile_size: int = 100,
@@ -80,13 +81,16 @@ def compute_gandalf_shap(
     if resolved_task == "classification":
         require_single_classification_target(target_cols)
 
-    X_bg = train_data[feature_cols].sample(min(1000, len(train_data)), random_state=42)
-    X_test_sub = test_data[feature_cols].sample(
-        n=min(1000, len(test_data)), random_state=42
+    X_bg = train_data[feature_cols]
+    shap_data = (
+        pd.concat([train_data, eval_data, test_data], axis=0)
+        if eval_data is not None
+        else pd.concat([train_data, test_data], axis=0)
     )
+    X_regions = shap_data[feature_cols]
     logger.info(
-        "Computing SHAP values for GANDALF (background={}, test_subset={})".format(
-            len(X_bg), len(X_test_sub)
+        "Computing SHAP values for GANDALF (background={}, shap_regions={})".format(
+            len(X_bg), len(X_regions)
         )
     )
 
@@ -109,7 +113,7 @@ def compute_gandalf_shap(
     wrapped = _TensorWrapper(pt_model).to(device)
 
     bg_tensor = torch.tensor(X_bg.values, dtype=torch.float32, device=device)
-    test_tensor = torch.tensor(X_test_sub.values, dtype=torch.float32, device=device)
+    test_tensor = torch.tensor(X_regions.values, dtype=torch.float32, device=device)
 
     explainer = shap.GradientExplainer(wrapped, bg_tensor)
     shap_values = explainer.shap_values(test_tensor)
@@ -121,7 +125,7 @@ def compute_gandalf_shap(
         target_col = target_cols[0]
         classes = _infer_gandalf_class_names(
             final_model,
-            test_data.loc[X_test_sub.index],
+            shap_data,
             train_data,
             target_col,
         )
@@ -209,7 +213,7 @@ def compute_gandalf_shap(
         sv_list,
         feature_cols,
         output_cols,
-        X_test_sub.index,
+        X_regions.index,
         SHAP_DIR,
         FIG_DIR,
         tile_size,
@@ -388,7 +392,7 @@ def main():
     if final_model.model is None:
         raise RuntimeError("Loaded model has no weights — check model directory")
 
-    _, _, target_cols, feature_cols, train_data, _, test_data = load_data(
+    _, _, target_cols, feature_cols, train_data, eval_data, test_data = load_data(
         **vars(params)
     )
     task = resolve_task(params["TASK"], train_data, target_cols)
@@ -399,6 +403,7 @@ def main():
         test_data,
         feature_cols,
         target_cols,
+        eval_data=eval_data,
         RES_DIR=params["RES_DIR"],
         FIG_DIR=params["FIG_DIR"],
         task=task,
