@@ -43,7 +43,9 @@ def train_final_model(
         require_single_classification_target(target_cols)
 
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
-    os.makedirs(logging_dir, exist_ok=True)
+    use_tensorboard = LOGGING == "tensorboard"
+    if use_tensorboard:
+        os.makedirs(logging_dir, exist_ok=True)
     use_wandb = wandb_cfg is not None
     run_name = (
         f"{wandb_cfg.model_name}_final_{time.strftime('%Y-%m-%d_%H%M')}"
@@ -52,7 +54,7 @@ def train_final_model(
     )
     experiment_project = (
         logging_dir
-        if LOGGING == "tensorboard"
+        if use_tensorboard
         else (wandb_cfg.project if use_wandb else logging_dir)
     )
     if use_wandb:

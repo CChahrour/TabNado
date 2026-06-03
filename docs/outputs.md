@@ -35,4 +35,4 @@ Outputs are organized by project run folder:
 ## Logs
 
 - `<PROJECT>.log`: Run-level pipeline log
-- `logging/`: TensorBoard files (if enabled)
+- `logs/`: TensorBoard files (if enabled)

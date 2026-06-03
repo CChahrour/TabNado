@@ -7,14 +7,20 @@ from pathlib import Path
 import numpy as np
 from loguru import logger
 
+_LoguruProgressCallback = None
+
 
 class LoguruProgressCallback:
     """Create a Lightning callback without importing Torch on tree backends."""
 
     def __new__(cls):
+        global _LoguruProgressCallback
+        if _LoguruProgressCallback is not None:
+            return _LoguruProgressCallback()
+
         from pytorch_lightning import Callback
 
-        class _LoguruProgressCallback(Callback):
+        class _RegisteredLoguruProgressCallback(Callback):
             def on_validation_epoch_end(self, trainer, pl_module) -> None:
                 metrics = {k: v for k, v in trainer.callback_metrics.items()}
                 if not metrics:
@@ -29,6 +35,11 @@ class LoguruProgressCallback:
                         pass
                 logger.info("  ".join(parts))
 
+        _RegisteredLoguruProgressCallback.__name__ = "_LoguruProgressCallback"
+        _RegisteredLoguruProgressCallback.__qualname__ = "_LoguruProgressCallback"
+        _RegisteredLoguruProgressCallback.__module__ = __name__
+        _LoguruProgressCallback = _RegisteredLoguruProgressCallback
+        globals()["_LoguruProgressCallback"] = _RegisteredLoguruProgressCallback
         return _LoguruProgressCallback()
 
 

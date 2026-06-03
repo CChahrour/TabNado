@@ -43,9 +43,9 @@ def _make_data_config(feature_cols, target_cols):
         target=target_cols,
         validation_split=0,
         normalize_continuous_features=False,
-        num_workers=os.cpu_count(),
+        num_workers=0,
         pin_memory=False,
-        dataloader_kwargs={"persistent_workers": True},
+        dataloader_kwargs={"persistent_workers": False},
     )
 
 
@@ -92,10 +92,12 @@ def sweep_train(
 
     use_wandb = wandb_cfg is not None
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
-    os.makedirs(logging_dir, exist_ok=True)
+    use_tensorboard = LOGGING == "tensorboard"
+    if use_tensorboard:
+        os.makedirs(logging_dir, exist_ok=True)
     experiment_project = (
         logging_dir
-        if LOGGING == "tensorboard"
+        if use_tensorboard
         else (wandb_cfg.project if use_wandb else logging_dir)
     )
 
@@ -345,7 +347,8 @@ def start_sweep_and_run(
     task = resolve_task(TASK, train_data, target_cols)
     use_wandb = wandb_cfg is not None
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
-    os.makedirs(logging_dir, exist_ok=True)
+    if LOGGING == "tensorboard":
+        os.makedirs(logging_dir, exist_ok=True)
 
     sweep_dir = os.path.join(RES_DIR, "sweep")
     os.makedirs(sweep_dir, exist_ok=True)
