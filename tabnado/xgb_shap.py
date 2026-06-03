@@ -19,6 +19,16 @@ from tabnado.tasks import classification_shap_output_columns, resolve_task
 from tabnado.utils import figure_style
 
 
+def _force_single_thread_xgboost(model) -> None:
+    """Keep XGBoost SHAP calls on one native thread for macOS/OpenMP stability."""
+    try:
+        booster = model.get_booster() if hasattr(model, "get_booster") else model
+        if hasattr(booster, "set_param"):
+            booster.set_param({"nthread": 1})
+    except Exception:
+        logger.debug("Could not force XGBoost model to single-threaded SHAP mode")
+
+
 def compute_xgb_shap(
     final_model,
     train_data: pd.DataFrame,
@@ -68,6 +78,7 @@ def compute_xgb_shap(
     else:
         estimators = final_model if isinstance(final_model, list) else [final_model]
     for booster in estimators:
+        _force_single_thread_xgboost(booster)
         explainer = shap.Explainer(booster, X_bg)
         ex = explainer(X_test_sub, check_additivity=False)
         sv_list.extend(shap_values_to_output_list(ex))

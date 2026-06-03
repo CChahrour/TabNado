@@ -48,6 +48,7 @@ def test_xgb_shap_supports_classification_artifact(tmp_path: Path):
         objective="binary:logistic",
         eval_metric="logloss",
         tree_method="hist",
+        n_jobs=1,
         random_state=42,
         verbosity=0,
     )

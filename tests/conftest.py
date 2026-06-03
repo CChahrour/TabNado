@@ -30,7 +30,7 @@ def worker_id(request):
 @pytest.fixture(scope="session")
 def coverage_path(params):
     """Ensure per-sample zarr stores exist in the dataset directory."""
-    from tests.make_test_dataset import SAMPLE_NAMES, create_test_dataset
+    from tests.make_test_dataset import CHROMOSOMES, SAMPLE_NAMES, create_test_dataset
 
     dataset_dir = Path(params["DATASET"])
 
@@ -44,6 +44,16 @@ def coverage_path(params):
                     return False
                 root = zarr.open_group(str(zp), mode="r")
                 if "assay" not in root.attrs or "sample" not in root.attrs:
+                    return False
+                for chrom in CHROMOSOMES:
+                    if chrom not in root or "coverage" not in root[chrom]:
+                        return False
+                    coverage = root[chrom]["coverage"]
+                    if coverage.shape[0] != 1 or coverage.shape[1] == 0:
+                        return False
+                if "metadata" not in root or "completed" not in root["metadata"]:
+                    return False
+                if not bool(root["metadata"]["completed"][0]):
                     return False
             return True
         except Exception:

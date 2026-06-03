@@ -1,3 +1,17 @@
+import os
+
+# Keep native math runtimes from over-subscribing or colliding across Torch,
+# XGBoost, CatBoost, SHAP, and plotting in one process. Users can override
+# these by setting the environment before importing tabnado.
+for _thread_env_var in (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+):
+    os.environ.setdefault(_thread_env_var, "1")
+
 from .api import (
     PipelineParams,
     __version__,

@@ -32,6 +32,8 @@ def test_peaks_pathway(coverage_path, peak_output_dir):
     peak_output_dir.mkdir(parents=True, exist_ok=True)
     params["RES_DIR"] = str(peak_output_dir)
     params["FIG_DIR"] = str(peak_output_dir / "figures")
+    params["DATA_DIR"] = str(peak_output_dir / "dataset")
+    params["LOGGING_DIR"] = str(peak_output_dir / "logs")
 
     data_dir = peak_output_dir / "dataset"
     data_dir.mkdir(parents=True, exist_ok=True)
