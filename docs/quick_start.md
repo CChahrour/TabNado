@@ -53,9 +53,13 @@ You should see:
 - `best_hyperparameters.json`
 - `final_model/`
 - `figures/scatter_test.png`
+- `figures/roc_curve_<target>.png` for classification runs
+- `evaluate/roc_auc.csv` for classification runs
 - `figures/embeddings_umap.png`
 - `shap/shap_mean_abs.csv`
 - `figures/shap_clustermap.png`
+- `figures/shap_stacked_bar.png`
+- `shap/shap_stacked_bar_data.csv`
 - `shap/spatial_shap_by_offset_<target>.csv`
 - `figures/shap_spatial_heatmap_<target>.png`
 - `figures/shap_offset_line_<target>.png`
@@ -126,4 +130,3 @@ apptainer exec \
 	tabnado.sif \
 	tabnado-run --params experiments/params_${SLURM_ARRAY_TASK_ID}.yaml
 ```
-

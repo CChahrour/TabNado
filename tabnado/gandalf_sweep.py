@@ -15,10 +15,11 @@ from pytorch_tabular.config import (
     TrainerConfig,
 )
 from pytorch_tabular.models import GANDALFConfig
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import f1_score, mean_squared_error, r2_score
 
 from tabnado.data import load_data, stratified_sample
 from tabnado.params import PipelineParams
+from tabnado.tasks import require_single_classification_target, resolve_task
 from tabnado.utils import (
     LoguruProgressCallback,
     log_macro,
@@ -83,7 +84,12 @@ def sweep_train(
     hp_config: dict | None = None,
     LOGGING: str = "none",
     wandb_cfg=None,
+    TASK: str = "regression",
 ):
+    task = resolve_task(TASK, train_data, target_cols)
+    if task == "classification":
+        require_single_classification_target(target_cols)
+
     use_wandb = wandb_cfg is not None
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
     os.makedirs(logging_dir, exist_ok=True)
@@ -119,7 +125,43 @@ def sweep_train(
         )
     )
 
+    def _make_model_config(config_obj, sweep_target_cols):
+        if task == "classification":
+            return GANDALFConfig(
+                learning_rate=config_obj.learning_rate,
+                embedding_dropout=config_obj.embedding_dropout,
+                gflu_stages=config_obj.gflu_stages,
+                gflu_dropout=config_obj.gflu_dropout,
+                gflu_feature_init_sparsity=config_obj.gflu_feature_init_sparsity,
+                learnable_sparsity=False,
+                head="LinearHead",
+                loss="CrossEntropyLoss",
+                metrics=["accuracy"],
+                metrics_params=[{}],
+                seed=42,
+                task="classification",
+            )
+
+        return GANDALFConfig(
+            learning_rate=config_obj.learning_rate,
+            embedding_dropout=config_obj.embedding_dropout,
+            gflu_stages=config_obj.gflu_stages,
+            gflu_dropout=config_obj.gflu_dropout,
+            gflu_feature_init_sparsity=config_obj.gflu_feature_init_sparsity,
+            learnable_sparsity=False,
+            head="LinearHead",
+            loss="MSELoss",
+            metrics=["r2_score", "mean_squared_error"],
+            metrics_params=[{}] * 2,
+            seed=42,
+            target_range=[(0, 1)] * len(sweep_target_cols),
+            task="regression",
+        )
+
     def _fit_and_eval(config_obj):
+        early_stopping = (
+            "valid_accuracy" if task == "classification" else "valid_r2_score"
+        )
         model = TabularModel(
             data_config=_make_data_config(feature_cols, sweep_target_cols),
             experiment_config=ExperimentConfig(
@@ -130,21 +172,7 @@ def sweep_train(
                 project_name=experiment_project,
                 run_name=run_name,
             ),
-            model_config=GANDALFConfig(
-                learning_rate=config_obj.learning_rate,
-                embedding_dropout=config_obj.embedding_dropout,
-                gflu_stages=config_obj.gflu_stages,
-                gflu_dropout=config_obj.gflu_dropout,
-                gflu_feature_init_sparsity=config_obj.gflu_feature_init_sparsity,
-                learnable_sparsity=False,
-                head="LinearHead",
-                loss="MSELoss",
-                metrics=["r2_score", "mean_squared_error"],
-                metrics_params=[{}] * 2,
-                seed=42,
-                target_range=[(0, 1)] * len(sweep_target_cols),
-                task="regression",
-            ),
+            model_config=_make_model_config(config_obj, sweep_target_cols),
             optimizer_config=OptimizerConfig(
                 optimizer_params={"weight_decay": config_obj.weight_decay},
             ),
@@ -158,7 +186,7 @@ def sweep_train(
                 batch_size=2048,
                 check_val_every_n_epoch=1,
                 checkpoints_path=os.path.join(run_dir, "checkpoints"),
-                early_stopping="valid_r2_score",
+                early_stopping=early_stopping,
                 early_stopping_mode="max",
                 early_stopping_patience=3,
                 load_best=True,
@@ -171,9 +199,14 @@ def sweep_train(
             suppress_lightning_logger=True,
         )
 
-        sweep_train_data = stratified_sample(
-            train_view, sweep_target_cols, frac=SWEEP_FRACTION
-        )
+        if task == "classification":
+            sweep_train_data = train_view.sample(
+                frac=min(SWEEP_FRACTION, 1.0), random_state=42
+            )
+        else:
+            sweep_train_data = stratified_sample(
+                train_view, sweep_target_cols, frac=SWEEP_FRACTION
+            )
         logger.info(
             f"Sweep train size: {len(sweep_train_data):,} ({SWEEP_FRACTION:.0%} of full)"
         )
@@ -184,28 +217,42 @@ def sweep_train(
             callbacks=[LoguruProgressCallback()],
         )
         # Log macro metrics to wandb if enabled
-        if use_wandb:
+        if use_wandb and task == "regression":
             log_macro(model, sweep_target_cols)
 
         pred_df = model.predict(test_view)
-        pred_df.columns = [c.replace("_prediction", "") for c in pred_df.columns]
-        y_true = test_view[sweep_target_cols].values
-        y_pred = pred_df[sweep_target_cols].values
+        if task == "classification":
+            target_col = sweep_target_cols[0]
+            pred_col = f"{target_col}_prediction"
+            y_true = test_view[target_col].astype(str).values
+            y_pred = pred_df[pred_col].astype(str).values
+        else:
+            pred_df.columns = [c.replace("_prediction", "") for c in pred_df.columns]
+            y_true = test_view[sweep_target_cols].values
+            y_pred = pred_df[sweep_target_cols].values
 
-        if np.isnan(y_pred).any():
+        if task == "regression" and np.isnan(y_pred).any():
             logger.warning("NaN predictions - skipping run")
             if use_wandb:
                 wandb.log({"failed": True})
             return None
 
-        test_metrics = {
-            "test_r2_macro": float(
-                r2_score(y_true, y_pred, multioutput="uniform_average")
-            ),
-            "test_mse_macro": float(mean_squared_error(y_true, y_pred)),
-        }
-        for i, col in enumerate(sweep_target_cols):
-            test_metrics[f"test_r2_{col}"] = float(r2_score(y_true[:, i], y_pred[:, i]))
+        if task == "classification":
+            test_metrics = {
+                "test_accuracy": float(np.mean(y_true == y_pred)),
+                "test_macro_f1": float(f1_score(y_true, y_pred, average="macro")),
+            }
+        else:
+            test_metrics = {
+                "test_r2_macro": float(
+                    r2_score(y_true, y_pred, multioutput="uniform_average")
+                ),
+                "test_mse_macro": float(mean_squared_error(y_true, y_pred)),
+            }
+            for i, col in enumerate(sweep_target_cols):
+                test_metrics[f"test_r2_{col}"] = float(
+                    r2_score(y_true[:, i], y_pred[:, i])
+                )
 
         with open(os.path.join(run_dir, "metrics.json"), "w") as f:
             json.dump(test_metrics, f, indent=4)
@@ -246,11 +293,17 @@ def sweep_train(
 def create_sweep_dict(
     MODEL_NAME: str = "GANDALF_Sweep",
     PROJECT: str = "PROJECT_NAME",
+    TASK: str = "regression",
 ):
+    metric = (
+        {"name": "valid_accuracy", "goal": "maximize"}
+        if str(TASK).lower() == "classification"
+        else {"name": "valid_r2_score", "goal": "maximize"}
+    )
     return {
         "name": MODEL_NAME,
         "method": "bayes",
-        "metric": {"name": "valid_r2_score", "goal": "maximize"},
+        "metric": metric,
         "parameters": {
             "learning_rate": {
                 "distribution": "log_uniform_values",
@@ -287,7 +340,9 @@ def start_sweep_and_run(
     LOGGING: str = "none",
     LOGGING_DIR: str | None = None,
     wandb_cfg=None,
+    TASK: str = "regression",
 ) -> str:
+    task = resolve_task(TASK, train_data, target_cols)
     use_wandb = wandb_cfg is not None
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
     os.makedirs(logging_dir, exist_ok=True)
@@ -303,7 +358,8 @@ def start_sweep_and_run(
         logger.info(f"Running local sweep: {sweep_id}")
         best_hp = None
         best_score = -np.inf
-        sweep_params = create_sweep_dict()["parameters"]
+        sweep_params = create_sweep_dict(TASK=task)["parameters"]
+        score_key = "test_macro_f1" if task == "classification" else "test_r2_macro"
 
         for _ in range(count):
             hp = _sample_from_sweep_params(sweep_params)
@@ -320,9 +376,10 @@ def start_sweep_and_run(
                 hp_config=hp,
                 LOGGING=LOGGING,
                 wandb_cfg=wandb_cfg,
+                TASK=task,
             )
-            if metrics is not None and metrics["test_r2_macro"] > best_score:
-                best_score = metrics["test_r2_macro"]
+            if metrics is not None and metrics[score_key] > best_score:
+                best_score = metrics[score_key]
                 best_hp = hp
 
         if best_hp is None:
@@ -332,7 +389,9 @@ def start_sweep_and_run(
         return sweep_id
 
     sweep_id = wandb.sweep(
-        sweep=create_sweep_dict(), entity=wandb_cfg.entity, project=wandb_cfg.project
+        sweep=create_sweep_dict(TASK=task),
+        entity=wandb_cfg.entity,
+        project=wandb_cfg.project,
     )
     logger.info(f"Created sweep: {sweep_id}")
     wandb.agent(
@@ -349,6 +408,7 @@ def start_sweep_and_run(
             SWEEP_ID=sweep_id,
             LOGGING=LOGGING,
             wandb_cfg=wandb_cfg,
+            TASK=task,
         ),
         count=count,
     )
@@ -414,7 +474,10 @@ def get_best_hp_from_sweep(
             continue
         with open(metrics_path) as f:
             metrics = json.load(f)
-        score = metrics.get("test_r2_macro", -np.inf)
+        score = metrics.get(
+            "test_macro_f1",
+            metrics.get("test_r2_macro", -np.inf),
+        )
         if score > best_score:
             with open(hp_path) as f:
                 all_hp = json.load(f)
@@ -460,6 +523,7 @@ def main():
         LOGGING=params["LOGGING"],
         LOGGING_DIR=params["LOGGING_DIR"],
         wandb_cfg=wandb_cfg,
+        TASK=params.TASK,
     )
     best_hp = get_best_hp_from_sweep(
         sweep_id,

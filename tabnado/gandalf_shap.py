@@ -12,11 +12,45 @@ from matplotlib import cm, colors
 from pytorch_tabular import TabularModel
 
 from tabnado.params import PipelineParams
+from tabnado.shap_utils import (
+    default_shap_output_columns,
+    plot_shap_stacked_bar,
+    shap_values_to_output_list,
+)
+from tabnado.tasks import (
+    classification_shap_output_columns,
+    require_single_classification_target,
+    resolve_task,
+)
 from tabnado.utils import (
     figure_style,
     parse_params_arg,
     setup_logger,
 )
+
+
+def _infer_gandalf_class_names(
+    final_model: TabularModel,
+    prediction_data: pd.DataFrame,
+    train_data: pd.DataFrame,
+    target_col: str,
+) -> list[str]:
+    try:
+        pred_df = final_model.predict(prediction_data.reset_index())
+        prob_cols = [
+            col
+            for col in pred_df.columns
+            if col.startswith(f"{target_col}_") and col.endswith("_probability")
+        ]
+        if prob_cols:
+            return [
+                col.removeprefix(f"{target_col}_").removesuffix("_probability")
+                for col in prob_cols
+            ]
+    except Exception as exc:
+        logger.warning(f"Could not infer class names from predictions: {exc}")
+
+    return sorted(train_data[target_col].astype(str).unique())
 
 
 def compute_gandalf_shap(
@@ -28,6 +62,7 @@ def compute_gandalf_shap(
     RES_DIR: str = "results",
     FIG_DIR: str = "figures",
     tile_size: int = 100,
+    task: str = "auto",
     wandb_run=None,
 ):
     """Compute SHAP values for GANDALF (PyTorch) model using KernelExplainer."""
@@ -40,6 +75,10 @@ def compute_gandalf_shap(
         raise ValueError(
             "Cannot compute SHAP: empty training data or no feature columns"
         )
+
+    resolved_task = resolve_task(task, train_data, target_cols)
+    if resolved_task == "classification":
+        require_single_classification_target(target_cols)
 
     X_bg = train_data[feature_cols].sample(min(1000, len(train_data)), random_state=42)
     X_test_sub = test_data[feature_cols].sample(
@@ -74,30 +113,30 @@ def compute_gandalf_shap(
 
     explainer = shap.GradientExplainer(wrapped, bg_tensor)
     shap_values = explainer.shap_values(test_tensor)
+    sv_list = shap_values_to_output_list(shap_values)
+    if not sv_list:
+        raise ValueError("SHAP explainer returned no values")
 
-    # SHAP may return either a list (one array per target) or a single
-    # 3D array shaped (n_samples, n_features, n_targets). Normalize both
-    # cases to a list of 2D arrays: one (n_samples, n_features) per target.
-    if isinstance(shap_values, list):
-        sv_list = [
-            np.asarray(sv).squeeze(-1)
-            if np.asarray(sv).ndim == 3 and np.asarray(sv).shape[-1] == 1
-            else np.asarray(sv)
-            for sv in shap_values
-        ]
+    if resolved_task == "classification":
+        target_col = target_cols[0]
+        classes = _infer_gandalf_class_names(
+            final_model,
+            test_data.loc[X_test_sub.index],
+            train_data,
+            target_col,
+        )
+        output_cols = classification_shap_output_columns(
+            target_col,
+            classes,
+            len(sv_list),
+        )
     else:
-        sv = np.asarray(shap_values)
-        if sv.ndim == 3 and sv.shape[-1] == len(target_cols):
-            sv_list = [sv[:, :, i] for i in range(sv.shape[-1])]
-        elif sv.ndim == 3 and sv.shape[-1] == 1:
-            sv_list = [sv.squeeze(-1)]
-        else:
-            sv_list = [sv]
+        output_cols = default_shap_output_columns(target_cols, len(sv_list))
 
     mean_abs_shap = pd.DataFrame(
         np.stack([np.abs(sv).mean(axis=0) for sv in sv_list]).T,
         index=feature_cols,
-        columns=target_cols,
+        columns=output_cols,
     )
     shap_mean_csv = f"{SHAP_DIR}/shap_mean_abs.csv"
     mean_abs_shap.to_csv(shap_mean_csv)
@@ -117,7 +156,7 @@ def compute_gandalf_shap(
     clustermap_data = clustermap_data.groupby(level=0).mean()
 
     n_rows = len(clustermap_data)
-    n_cols = len(target_cols)
+    n_cols = len(output_cols)
     g = sns.clustermap(
         clustermap_data,
         row_cluster=n_rows > 1,
@@ -157,12 +196,19 @@ def compute_gandalf_shap(
 
         wandb_run.log({"shap/clustermap": wandb.Image(clustermap_path)})
 
+    plot_shap_stacked_bar(
+        mean_abs_shap,
+        FIG_DIR,
+        SHAP_DIR,
+        wandb_run=wandb_run,
+    )
+
     # === SPATIAL SHAP ANALYSIS ===
     # Aggregate SHAP values by genomic offset from TSS
     _plot_spatial_shap(
         sv_list,
         feature_cols,
-        target_cols,
+        output_cols,
         X_test_sub.index,
         SHAP_DIR,
         FIG_DIR,
@@ -345,6 +391,7 @@ def main():
     _, _, target_cols, feature_cols, train_data, _, test_data = load_data(
         **vars(params)
     )
+    task = resolve_task(params["TASK"], train_data, target_cols)
 
     compute_gandalf_shap(
         final_model,
@@ -354,6 +401,7 @@ def main():
         target_cols,
         RES_DIR=params["RES_DIR"],
         FIG_DIR=params["FIG_DIR"],
+        task=task,
     )
     logger.info(
         "========== GANDALF SHAP END ({:.2f}s total) ==========".format(

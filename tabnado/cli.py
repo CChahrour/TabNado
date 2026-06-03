@@ -1,73 +1,52 @@
 """CLI entry points for tabnado commands."""
 
-from tabnado.api import PipelineParams
-
 
 def run() -> None:
     """Run the full pipeline."""
-    from tabnado.api import run_pipeline
+    from tabnado.api import run as api_run
     from tabnado.utils import parse_params_arg
 
-    run_pipeline(parse_params_arg())
+    api_run(parse_params_arg())
 
 
 def data() -> None:
     """Run data loading/build stage."""
-    from tabnado.data import main as data_main
+    from tabnado.api import data as api_data
+    from tabnado.utils import parse_params_arg
 
-    data_main()
+    api_data(parse_params_arg())
 
 
 def sweep() -> None:
     """Run hyperparameter sweep stage."""
+    from tabnado.api import sweep as api_sweep
     from tabnado.utils import parse_params_arg
 
-    params = PipelineParams.from_yaml(parse_params_arg())
-    model_type = params.MODEL_TYPE
-
-    if model_type == "xgboost":
-        from tabnado.xgb_sweep import main as sweep_main
-    else:
-        from tabnado.gandalf_sweep import main as sweep_main
-
-    sweep_main()
+    api_sweep(parse_params_arg())
 
 
 def train() -> None:
     """Run final model training stage."""
+    from tabnado.api import train as api_train
     from tabnado.utils import parse_params_arg
 
-    params = PipelineParams.from_yaml(parse_params_arg())
-    model_type = params.MODEL_TYPE
-
-    if model_type == "xgboost":
-        from tabnado.xgb_train import main as train_main
-    else:
-        from tabnado.gandalf_train import main as train_main
-
-    train_main()
+    api_train(parse_params_arg())
 
 
 def evaluate() -> None:
     """Run evaluation and UMAP stage."""
-    from tabnado.evaluate import main as evaluate_main
+    from tabnado.api import evaluate as api_evaluate
+    from tabnado.utils import parse_params_arg
 
-    evaluate_main()
+    api_evaluate(parse_params_arg())
 
 
 def shap() -> None:
     """Run SHAP analysis stage."""
+    from tabnado.api import shap as api_shap
     from tabnado.utils import parse_params_arg
 
-    params = PipelineParams.from_yaml(parse_params_arg())
-    model_type = params.MODEL_TYPE
-
-    if model_type == "xgboost":
-        from tabnado.xgb_shap import main as shap_main
-    else:
-        from tabnado.gandalf_shap import main as shap_main
-
-    shap_main()
+    api_shap(parse_params_arg())
 
 
 def init() -> None:

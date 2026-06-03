@@ -4,30 +4,32 @@ import sys
 from importlib import metadata
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
-import torch
 from loguru import logger
-from pytorch_lightning import Callback
 
 
-class LoguruProgressCallback(Callback):
-    """Log per-epoch train/val metrics via loguru so they appear in the log file."""
+class LoguruProgressCallback:
+    """Create a Lightning callback without importing Torch on tree backends."""
 
-    def on_validation_epoch_end(self, trainer, pl_module) -> None:
-        metrics = {k: v for k, v in trainer.callback_metrics.items()}
-        if not metrics:
-            return
-        epoch = trainer.current_epoch
-        max_epochs = trainer.max_epochs
-        parts = [f"epoch={epoch}/{max_epochs}"]
-        for k, v in sorted(metrics.items()):
-            try:
-                parts.append(f"{k}={float(v):.4f}")
-            except (TypeError, ValueError):
-                pass
-        logger.info("  ".join(parts))
+    def __new__(cls):
+        from pytorch_lightning import Callback
+
+        class _LoguruProgressCallback(Callback):
+            def on_validation_epoch_end(self, trainer, pl_module) -> None:
+                metrics = {k: v for k, v in trainer.callback_metrics.items()}
+                if not metrics:
+                    return
+                epoch = trainer.current_epoch
+                max_epochs = trainer.max_epochs
+                parts = [f"epoch={epoch}/{max_epochs}"]
+                for k, v in sorted(metrics.items()):
+                    try:
+                        parts.append(f"{k}={float(v):.4f}")
+                    except (TypeError, ValueError):
+                        pass
+                logger.info("  ".join(parts))
+
+        return _LoguruProgressCallback()
 
 
 def _package_version() -> str:
@@ -92,12 +94,17 @@ def setup_logger(res_dir: str, project: str) -> None:
 
 
 def seed_everything(seed: int = 42):
+    import torch
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
 
 def figure_style():
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
     size = 16
     smaller = 10
     rc = {

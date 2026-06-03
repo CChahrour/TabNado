@@ -164,9 +164,13 @@ Results are written to `results/<MODEL_NAME>_<TARGET>/`:
 | `best_hyperparameters.json` | Best hyperparameters from sweep |
 | `final_model/` | Saved backend model (for example `xgboost_model.joblib` for XGBoost) |
 | `figures/scatter_test.png` | True vs predicted scatter |
+| `figures/roc_curve_<target>.png` | ROC curve for classification runs |
+| `evaluate/roc_auc.csv` | ROC AUC summary for classification runs |
 | `figures/embeddings_umap.png` | UMAP embedding output |
 | `figures/shap_clustermap.png` | Mean \|SHAP\| heatmap across cofactors and targets |
+| `figures/shap_stacked_bar.png` | Stacked mean \|SHAP\| bar plot by cofactor and output |
 | `shap/shap_mean_abs.csv` | Mean absolute SHAP by feature and target |
+| `shap/shap_stacked_bar_data.csv` | Data used for the stacked SHAP bar plot |
 | `shap/spatial_shap_by_offset_<target>.csv` | Spatial SHAP summary by genomic offset per target |
 | `figures/shap_spatial_heatmap_<target>.png` | Spatial SHAP heatmap (cofactor × offset) per target |
 | `figures/shap_offset_line_<target>.png` | SHAP importance profile by genomic offset per target |

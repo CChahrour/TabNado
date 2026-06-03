@@ -9,7 +9,8 @@ from typing import Any, Optional
 import yaml
 
 VALID_LOGGING_BACKENDS = {"wandb", "tensorboard"}
-VALID_MODEL_TYPES = {"gandalf", "xgboost"}
+VALID_MODEL_TYPES = {"catboost", "gandalf", "xgboost"}
+VALID_TASKS = {"auto", "classification", "regression"}
 
 
 @dataclass
@@ -19,6 +20,7 @@ class PipelineParams:
     TARGET: str
     MODEL_TYPE: str
     LOGGING: str
+    TASK: str
 
     # --- Derived from output_dir + model + target ---
     PROJECT: str
@@ -62,8 +64,10 @@ class PipelineParams:
 
         logging_backend = str(p.get("logging", "wandb")).lower()
         model_type = str(model_name).lower()
+        task = str(p.get("task", "auto")).lower()
         cls._validate_logging_backend(logging_backend)
         cls._validate_model_type(model_type)
+        cls._validate_task(task)
 
         target = p.get("target")
         project = f"{model_name}_{target}"
@@ -86,6 +90,7 @@ class PipelineParams:
             TARGET=target,
             MODEL_TYPE=model_type,
             LOGGING=logging_backend,
+            TASK=task,
             PROJECT=project,
             RES_DIR=res_dir,
             FIG_DIR=f"{res_dir}/figures",
@@ -122,9 +127,14 @@ class PipelineParams:
                 f"Invalid model_type '{model_type}'. Use one of {VALID_MODEL_TYPES}."
             )
 
+    @staticmethod
+    def _validate_task(task: str) -> None:
+        if task not in VALID_TASKS:
+            raise ValueError(f"Invalid task '{task}'. Use one of {VALID_TASKS}.")
+
     def create_directories(self) -> None:
         """Create all output directories for this pipeline run."""
-        for directory in (self.RES_DIR, self.FIG_DIR, self.LOGGING_DIR, self.DATA_DIR):
+        for directory in (self.RES_DIR, self.FIG_DIR, self.DATA_DIR):
             os.makedirs(directory, exist_ok=True)
 
     def __getitem__(self, key: str) -> Any:

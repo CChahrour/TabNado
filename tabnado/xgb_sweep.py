@@ -7,12 +7,48 @@ import pandas as pd
 import xgboost as xgb
 from loguru import logger
 from sklearn.metrics import make_scorer, r2_score
-from sklearn.model_selection import GroupKFold, KFold, RandomizedSearchCV
+from sklearn.metrics import f1_score
+from sklearn.model_selection import (
+    GroupKFold,
+    KFold,
+    RandomizedSearchCV,
+    StratifiedKFold,
+)
 from sklearn.multioutput import MultiOutputRegressor
 
 from tabnado.data import load_data
 from tabnado.params import PipelineParams
+from tabnado.tasks import encode_classification_target, json_safe, resolve_task
 from tabnado.utils import parse_params_arg, setup_logger
+
+
+def _default_best_hp(param_dist: dict) -> dict:
+    best_hp = {}
+    for key, values in param_dist.items():
+        first = values[0]
+        if isinstance(first, np.floating):
+            first = float(first)
+        elif isinstance(first, np.integer):
+            first = int(first)
+        best_hp[key.replace("estimator__", "")] = first
+    return best_hp
+
+
+def _stratified_fraction_sample(
+    data: pd.DataFrame,
+    target_col: str,
+    frac: float,
+    seed: int,
+) -> pd.DataFrame:
+    frac = min(max(float(frac), 0.0), 1.0)
+    if frac >= 1.0:
+        return data
+
+    parts = []
+    for _, group in data.groupby(target_col, sort=False, observed=False):
+        n = max(1, int(round(len(group) * frac)))
+        parts.append(group.sample(n=min(n, len(group)), random_state=seed))
+    return pd.concat(parts).sample(frac=1.0, random_state=seed)
 
 
 def sweep_xgboost(
@@ -25,6 +61,7 @@ def sweep_xgboost(
     seed: int = 42,
     n_jobs: int = 1,
     wandb_cfg=None,
+    TASK: str = "regression",
     **kwargs,
 ) -> dict:
     """
@@ -36,6 +73,140 @@ def sweep_xgboost(
     """
     Path(RES_DIR).mkdir(parents=True, exist_ok=True)
     use_wandb = wandb_cfg is not None
+    task = resolve_task(TASK, train_data, target_cols)
+
+    if task == "classification":
+        encoded = encode_classification_target(train_data, target_cols)
+        objective = (
+            "binary:logistic"
+            if encoded.problem_type == "binary"
+            else "multi:softprob"
+        )
+        base_kwargs = {
+            "objective": objective,
+            "tree_method": "hist",
+            "max_bin": 256,
+            "n_jobs": 1,
+            "random_state": seed,
+            "verbosity": 0,
+            "eval_metric": "logloss"
+            if encoded.problem_type == "binary"
+            else "mlogloss",
+        }
+        if encoded.problem_type == "multiclass":
+            base_kwargs["num_class"] = len(encoded.classes)
+
+        estimator = xgb.XGBClassifier(**base_kwargs)
+        param_dist = {
+            "max_depth": [3, 4, 5, 6, 8],
+            "learning_rate": np.logspace(np.log10(0.01), np.log10(0.2), 10),
+            "n_estimators": [300, 600, 1000],
+            "min_child_weight": [1, 3, 5, 10],
+            "subsample": [0.6, 0.8, 1.0],
+            "colsample_bytree": [0.6, 0.8, 1.0],
+            "reg_alpha": [0.0, 1e-3, 1e-2, 1e-1, 1.0],
+            "reg_lambda": [0.1, 1.0, 5.0, 10.0],
+        }
+
+        tune_data = _stratified_fraction_sample(
+            train_data,
+            encoded.target_col,
+            sweep_fraction,
+            seed,
+        )
+        X_tune = tune_data[feature_cols].values
+        class_lookup = {label: idx for idx, label in enumerate(encoded.classes)}
+        y_tune = np.array(
+            [class_lookup[label] for label in tune_data[encoded.target_col].astype(str)]
+        )
+
+        if len(X_tune) < 2 or n_sweeps <= 0:
+            best_hp = _default_best_hp(param_dist)
+            logger.warning(
+                "XGBoost classifier HP sweep skipped: using deterministic defaults."
+            )
+            out_path = Path(RES_DIR) / "best_hyperparameters.json"
+            with open(out_path, "w") as f:
+                json.dump(json_safe(best_hp), f, indent=2)
+            logger.info(f"Saved best hyperparameters to {out_path}")
+            return best_hp
+
+        unique_classes, class_counts = np.unique(y_tune, return_counts=True)
+        if len(unique_classes) < 2:
+            best_hp = _default_best_hp(param_dist)
+            logger.warning(
+                "XGBoost classifier HP sweep skipped: tuning sample contains "
+                "fewer than two classes. Using deterministic defaults."
+            )
+            out_path = Path(RES_DIR) / "best_hyperparameters.json"
+            with open(out_path, "w") as f:
+                json.dump(json_safe(best_hp), f, indent=2)
+            logger.info(f"Saved best hyperparameters to {out_path}")
+            return best_hp
+
+        n_splits = min(3, int(class_counts.min()))
+        if n_splits >= 2:
+            cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+            fit_kwargs = {}
+            cv_desc = f"{n_splits}-fold StratifiedKFold"
+        else:
+            best_hp = _default_best_hp(param_dist)
+            logger.warning(
+                "XGBoost classifier HP sweep skipped: every class needs at least "
+                "two samples for stratified CV. Using deterministic defaults."
+            )
+            out_path = Path(RES_DIR) / "best_hyperparameters.json"
+            with open(out_path, "w") as f:
+                json.dump(json_safe(best_hp), f, indent=2)
+            logger.info(f"Saved best hyperparameters to {out_path}")
+            return best_hp
+
+        if len(X_tune) < max(10, n_splits * 4):
+            best_hp = _default_best_hp(param_dist)
+            logger.warning(
+                "XGBoost classifier HP sweep skipped: {} samples is too few for "
+                "stable {}. Using deterministic defaults.".format(
+                    len(X_tune), cv_desc
+                )
+            )
+            out_path = Path(RES_DIR) / "best_hyperparameters.json"
+            with open(out_path, "w") as f:
+                json.dump(json_safe(best_hp), f, indent=2)
+            logger.info(f"Saved best hyperparameters to {out_path}")
+            return best_hp
+
+        search = RandomizedSearchCV(
+            estimator=estimator,
+            param_distributions=param_dist,
+            n_iter=n_sweeps,
+            scoring=make_scorer(f1_score, average="macro"),
+            cv=cv,
+            n_jobs=n_jobs,
+            verbose=1,
+            random_state=seed,
+            refit=False,
+        )
+        logger.info(
+            f"XGBoost classifier HP sweep: {n_sweeps} iterations on "
+            f"{len(X_tune):,} regions ({sweep_fraction:.0%} of train), {cv_desc}"
+        )
+        search.fit(X_tune, y_tune, **fit_kwargs)
+        best_hp = {
+            k.replace("estimator__", ""): v for k, v in search.best_params_.items()
+        }
+        if np.isnan(search.best_score_):
+            logger.warning("XGBoost classifier sweep scores are NaN; using defaults.")
+            best_hp = _default_best_hp(param_dist)
+        else:
+            logger.info(
+                f"Best sweep macro-F1={search.best_score_:.4f}  params={best_hp}"
+            )
+
+        out_path = Path(RES_DIR) / "best_hyperparameters.json"
+        with open(out_path, "w") as f:
+            json.dump(json_safe(best_hp), f, indent=2)
+        logger.info(f"Saved best hyperparameters to {out_path}")
+        return best_hp
 
     base = xgb.XGBRegressor(
         objective="reg:squarederror",
@@ -77,16 +248,8 @@ def sweep_xgboost(
     if len(target_cols) == 1:
         y_tune = y_tune.ravel()
 
-    def _default_best_hp() -> dict:
-        return {
-            k.replace("estimator__", ""): (
-                float(v[0]) if isinstance(v[0], np.floating) else v[0]
-            )
-            for k, v in param_dist.items()
-        }
-
     if len(X_tune) < 2:
-        best_hp = _default_best_hp()
+        best_hp = _default_best_hp(param_dist)
         logger.warning(
             "XGBoost HP sweep skipped: need at least 2 samples, got {}. "
             "Using deterministic default hyperparameters.".format(len(X_tune))
@@ -117,7 +280,7 @@ def sweep_xgboost(
 
     min_cv_samples = max(10, n_splits * 4)
     if len(X_tune) < min_cv_samples:
-        best_hp = _default_best_hp()
+        best_hp = _default_best_hp(param_dist)
         logger.warning(
             "XGBoost HP sweep skipped: {} samples is too few for stable {}. "
             "Using deterministic default hyperparameters.".format(
@@ -162,7 +325,7 @@ def sweep_xgboost(
             "XGBoost sweep: all CV scores are NaN — check that sweep_fraction produces "
             "enough samples per fold. Falling back to default hyperparameters."
         )
-        best_hp = _default_best_hp()
+        best_hp = _default_best_hp(param_dist)
     else:
         logger.info(f"Best sweep R²={best_score:.4f}  params={best_hp}")
 
@@ -197,7 +360,13 @@ def sweep_xgboost(
             best_hp,
             f,
             indent=2,
-            default=lambda x: float(x) if isinstance(x, np.floating) else x,
+            default=lambda x: (
+                float(x)
+                if isinstance(x, np.floating)
+                else int(x)
+                if isinstance(x, np.integer)
+                else x
+            ),
         )
     logger.info(f"Saved best hyperparameters to {out_path}")
 
@@ -223,4 +392,5 @@ def main():
         sweep_fraction=params["SWEEP_FRACTION"],
         RES_DIR=params["RES_DIR"],
         wandb_cfg=wandb_cfg,
+        TASK=params.TASK,
     )

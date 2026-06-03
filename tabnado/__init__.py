@@ -1,4 +1,35 @@
-from .data import load_data
-from .params import PipelineParams
+from .api import (
+    PipelineParams,
+    __version__,
+    compute_umap_embeddings,
+    evaluate_model,
+    load_data,
+    load_params,
+    run,
+    run_data,
+    run_evaluate,
+    run_pipeline,
+    run_shap,
+    run_sweep,
+    run_train,
+    setup_logger,
+    write_params_template,
+)
 
-__all__ = ["PipelineParams", "load_data"]
+__all__ = [
+    "PipelineParams",
+    "__version__",
+    "compute_umap_embeddings",
+    "evaluate_model",
+    "load_data",
+    "load_params",
+    "run",
+    "run_data",
+    "run_evaluate",
+    "run_pipeline",
+    "run_shap",
+    "run_sweep",
+    "run_train",
+    "setup_logger",
+    "write_params_template",
+]

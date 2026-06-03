@@ -476,6 +476,229 @@ def load_or_build_datasets(
     return train_data, eval_data, test_data
 
 
+PARQUET_SUFFIXES = {".parquet", ".pq"}
+PARQUET_METADATA_COLUMNS = {
+    "Chromosome",
+    "End",
+    "Start",
+    "contig",
+    "end",
+    "name",
+    "range_index",
+    "range_length",
+    "ranges",
+    "region",
+    "start",
+    "strand",
+}
+
+
+def _is_parquet_dataset(path: str | Path) -> bool:
+    return Path(path).suffix.lower() in PARQUET_SUFFIXES
+
+
+def _region_from_coordinates(df: pd.DataFrame) -> pd.Series:
+    return (
+        df["contig"].astype(str)
+        + ":"
+        + df["start"].astype(str)
+        + "-"
+        + df["end"].astype(str)
+    )
+
+
+def _load_parquet_model_frame(dataset: str | Path, target: str) -> pd.DataFrame:
+    """Load either a long QuantNado reduction parquet or a wide model parquet."""
+    source = pd.read_parquet(dataset)
+
+    long_required = {"sample", "contig", "start", "end", "name"}
+    value_cols = [col for col in ("mean", "value") if col in source.columns]
+    if long_required.issubset(source.columns) and value_cols:
+        value_col = value_cols[0]
+        logger.info(
+            f"Loading long parquet reduction from {dataset}; pivoting '{value_col}' by sample"
+        )
+        wide = source.pivot_table(
+            index=["contig", "start", "end", "name"],
+            columns="sample",
+            values=value_col,
+            aggfunc="mean",
+        )
+        wide.columns = wide.columns.astype(str)
+        wide = wide.reset_index()
+        wide[target] = wide["name"].astype(str)
+        wide["region"] = _region_from_coordinates(wide)
+        wide = wide.set_index("region")
+        wide.index.name = "region"
+        wide = wide.drop(columns=["contig", "start", "end", "name"])
+        return wide[[target] + [col for col in wide.columns if col != target]]
+
+    if target not in source.columns:
+        raise ValueError(
+            f"Parquet dataset must either contain target column '{target}' or use the "
+            "long reduction schema with sample/mean/contig/start/end/name columns."
+        )
+
+    logger.info(f"Loading wide parquet dataset from {dataset}")
+    wide = source.copy()
+    if "region" in wide.columns and isinstance(wide.index, pd.RangeIndex):
+        wide = wide.set_index("region")
+        wide.index.name = "region"
+    elif {"contig", "start", "end"}.issubset(wide.columns) and isinstance(
+        wide.index, pd.RangeIndex
+    ):
+        wide["region"] = _region_from_coordinates(wide)
+        wide = wide.set_index("region")
+        wide.index.name = "region"
+    return wide
+
+
+def _infer_parquet_feature_cols(df: pd.DataFrame, target: str) -> list[str]:
+    candidates = [
+        col
+        for col in df.columns
+        if col != target and col not in PARQUET_METADATA_COLUMNS
+    ]
+    feature_cols = [col for col in candidates if pd.api.types.is_numeric_dtype(df[col])]
+    if not feature_cols:
+        raise ValueError(
+            "No numeric feature columns found in parquet dataset after excluding "
+            f"target '{target}' and metadata columns."
+        )
+    return feature_cols
+
+
+def _contigs_from_model_frame(df: pd.DataFrame) -> pd.Series:
+    if isinstance(df.index, pd.MultiIndex) and "contig" in df.index.names:
+        return pd.Series(df.index.get_level_values("contig"), index=df.index).astype(str)
+
+    for col in ("contig", "Chromosome"):
+        if col in df.columns:
+            return df[col].astype(str)
+
+    if "region" in df.columns:
+        regions = df["region"].astype(str)
+    else:
+        regions = pd.Series(df.index.astype(str), index=df.index)
+
+    if not regions.str.contains(":", regex=False).any():
+        raise ValueError(
+            "Could not infer chromosomes for parquet split. Use a MultiIndex level "
+            "named 'contig', a contig/Chromosome column, region strings like "
+            "chr1:100-200, or contig/start/end columns."
+        )
+    return regions.str.split(":").str[0]
+
+
+def _scale_parquet_features(df: pd.DataFrame, feature_cols: list[str]) -> pd.DataFrame:
+    """Scale raw coverage-like parquet features to [0, 1] when needed."""
+    if not feature_cols:
+        return df
+
+    arr = df[feature_cols].to_numpy(dtype="float32", copy=True)
+    if np.isnan(arr).any():
+        logger.warning("Parquet features contain NaN — filling with 0 before scaling")
+        arr = np.nan_to_num(arr, nan=0.0)
+
+    finite = arr[np.isfinite(arr)]
+    if finite.size and finite.min() >= 0.0 and finite.max() <= 1.0:
+        return df
+
+    logger.info("Scaling parquet features to [0, 1]")
+    if finite.size and finite.min() >= 0.0:
+        non_zeros = np.where(arr > 0, arr, np.nan)
+        has_nonzero = np.isfinite(non_zeros).any(axis=0)
+        upper_quartile = np.ones(arr.shape[1], dtype="float32")
+        if has_nonzero.any():
+            upper_quartile[has_nonzero] = np.nanpercentile(
+                non_zeros[:, has_nonzero], 75, axis=0
+            )
+        upper_quartile = np.where(
+            np.isfinite(upper_quartile) & (upper_quartile > 0),
+            upper_quartile,
+            1.0,
+        )
+        arr = arr / upper_quartile
+        clip_at = np.nanpercentile(arr, 99.5, axis=0)
+        clip_at = np.where(np.isfinite(clip_at), clip_at, 1.0)
+        arr = np.clip(arr, None, clip_at)
+        arr = np.log1p(np.clip(arr, 0.0, None))
+
+    scaled = MinMaxScaler().fit_transform(arr).astype(np.float32)
+    result = df.copy()
+    result.loc[:, feature_cols] = scaled
+    return result
+
+
+def load_parquet_data(
+    TARGET: str,
+    DATASET: str,
+    DATA_DIR: str,
+    EVAL_CHR: str = "chr8",
+    TEST_CHR: str = "chr9",
+):
+    """Load precomputed parquet data and create train/eval/test chromosome splits."""
+    Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+    dataset_train_path = Path(DATA_DIR) / "dataset_train.parquet"
+    dataset_eval_path = Path(DATA_DIR) / "dataset_eval.parquet"
+    dataset_test_path = Path(DATA_DIR) / "dataset_test.parquet"
+
+    cached_paths = [dataset_train_path, dataset_eval_path, dataset_test_path]
+    if all(path.exists() for path in cached_paths):
+        logger.info("Loading cached parquet train/eval/test datasets")
+        train_data = pd.read_parquet(dataset_train_path)
+        eval_data = pd.read_parquet(dataset_eval_path)
+        test_data = pd.read_parquet(dataset_test_path)
+        if TARGET in train_data.columns:
+            target_cols = [TARGET]
+            feature_cols = _infer_parquet_feature_cols(train_data, TARGET)
+            train_data, eval_data, test_data = validate_features(
+                train_data, eval_data, test_data, feature_cols
+            )
+            samples = feature_cols + target_cols
+            return (
+                None,
+                samples,
+                target_cols,
+                feature_cols,
+                train_data,
+                eval_data,
+                test_data,
+            )
+        logger.warning(
+            f"Cached parquet splits did not contain target '{TARGET}' — rebuilding from source"
+        )
+
+    data = _load_parquet_model_frame(DATASET, TARGET)
+    target_cols = [TARGET]
+    feature_cols = _infer_parquet_feature_cols(data, TARGET)
+    data = _scale_parquet_features(data, feature_cols)
+
+    contigs = _contigs_from_model_frame(data)
+    logger.info(f"Splitting parquet by chromosome: eval={EVAL_CHR}, test={TEST_CHR}")
+    train_mask = ~contigs.isin([EVAL_CHR, TEST_CHR])
+    eval_mask = contigs.eq(EVAL_CHR)
+    test_mask = contigs.eq(TEST_CHR)
+
+    train_data = data.loc[train_mask]
+    eval_data = data.loc[eval_mask]
+    test_data = data.loc[test_mask]
+    train_data, eval_data, test_data = validate_features(
+        train_data, eval_data, test_data, feature_cols
+    )
+
+    train_data.to_parquet(dataset_train_path)
+    eval_data.to_parquet(dataset_eval_path)
+    test_data.to_parquet(dataset_test_path)
+    logger.info(f"Saved train/eval/test parquets to {Path(DATA_DIR)}")
+    logger.info(
+        f"Final shape — Train: {train_data.shape}, Eval: {eval_data.shape}, Test: {test_data.shape}"
+    )
+
+    samples = feature_cols + target_cols
+    return None, samples, target_cols, feature_cols, train_data, eval_data, test_data
+
+
 def load_data(
     TARGET: str = "MLLN",
     DATASET: str = "data/dataset",
@@ -496,6 +719,15 @@ def load_data(
     **_,
 ):
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+
+    if _is_parquet_dataset(DATASET):
+        return load_parquet_data(
+            TARGET=TARGET,
+            DATASET=DATASET,
+            DATA_DIR=DATA_DIR,
+            EVAL_CHR=EVAL_CHR,
+            TEST_CHR=TEST_CHR,
+        )
 
     ds = qn.open_dataset(DATASET)
     samples, target_cols, feature_cols = get_samples(

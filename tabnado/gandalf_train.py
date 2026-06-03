@@ -16,6 +16,7 @@ from pytorch_tabular.models import GANDALFConfig
 from tabnado.data import load_data
 from tabnado.gandalf_sweep import _make_data_config
 from tabnado.params import PipelineParams
+from tabnado.tasks import require_single_classification_target, resolve_task
 from tabnado.utils import (
     LoguruProgressCallback,
     log_macro,
@@ -34,8 +35,13 @@ def train_final_model(
     LOGGING_DIR: str | None = None,
     LOGGING: str = "none",
     wandb_cfg=None,
+    TASK: str = "regression",
 ) -> TabularModel:
     logger.info("Training final GANDALF model with best hyperparameters")
+    task = resolve_task(TASK, train_data, target_cols)
+    if task == "classification":
+        require_single_classification_target(target_cols)
+
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
     os.makedirs(logging_dir, exist_ok=True)
     use_wandb = wandb_cfg is not None
@@ -51,17 +57,25 @@ def train_final_model(
     )
     if use_wandb:
         wandb_cfg.init_run(name=run_name, group="final", config=best_hp)
-    final_model = TabularModel(
-        data_config=_make_data_config(feature_cols, target_cols),
-        experiment_config=ExperimentConfig(
-            exp_log_freq=1,
-            exp_watch=None,
-            log_logits=False,
-            log_target="wandb" if use_wandb else LOGGING,
-            project_name=experiment_project,
-            run_name=run_name,
-        ),
-        model_config=GANDALFConfig(
+    if task == "classification":
+        model_config = GANDALFConfig(
+            learning_rate=best_hp.get("learning_rate", 1e-2),
+            embedding_dropout=best_hp.get("embedding_dropout", 0.01),
+            gflu_stages=best_hp.get("gflu_stages", 10),
+            gflu_dropout=best_hp.get("gflu_dropout", 0.02),
+            gflu_feature_init_sparsity=best_hp.get("gflu_feature_init_sparsity", 0.2),
+            learnable_sparsity=False,
+            head="LinearHead",
+            loss="CrossEntropyLoss",
+            metrics=["accuracy"],
+            metrics_params=[{}],
+            seed=42,
+            task="classification",
+        )
+        early_stopping = "valid_accuracy"
+        early_stopping_mode = "max"
+    else:
+        model_config = GANDALFConfig(
             learning_rate=best_hp.get("learning_rate", 1e-2),
             embedding_dropout=best_hp.get("embedding_dropout", 0.01),
             gflu_stages=best_hp.get("gflu_stages", 10),
@@ -75,7 +89,21 @@ def train_final_model(
             seed=42,
             target_range=[(0, 1)] * len(target_cols),
             task="regression",
+        )
+        early_stopping = "valid_r2_score"
+        early_stopping_mode = "max"
+
+    final_model = TabularModel(
+        data_config=_make_data_config(feature_cols, target_cols),
+        experiment_config=ExperimentConfig(
+            exp_log_freq=1,
+            exp_watch=None,
+            log_logits=False,
+            log_target="wandb" if use_wandb else LOGGING,
+            project_name=experiment_project,
+            run_name=run_name,
         ),
+        model_config=model_config,
         optimizer_config=OptimizerConfig(
             optimizer_params={"weight_decay": best_hp.get("weight_decay", 1e-3)},
         ),
@@ -89,8 +117,8 @@ def train_final_model(
             batch_size=2048,
             check_val_every_n_epoch=1,
             checkpoints_path=os.path.join(RES_DIR, "final_model_checkpoints"),
-            early_stopping="valid_r2_score",
-            early_stopping_mode="max",
+            early_stopping=early_stopping,
+            early_stopping_mode=early_stopping_mode,
             early_stopping_patience=5,
             load_best=True,
             max_epochs=100,
@@ -108,7 +136,7 @@ def train_final_model(
     final_model.save_model(os.path.join(RES_DIR, "final_model"), inference_only=False)
     logger.info(f"Final GANDALF model saved to {RES_DIR}/final_model")
 
-    if use_wandb:
+    if use_wandb and task == "regression":
         log_macro(final_model, target_cols)
     return final_model
 
@@ -149,6 +177,7 @@ def main():
         LOGGING=params.LOGGING,
         LOGGING_DIR=params.LOGGING_DIR,
         wandb_cfg=wandb_cfg,
+        TASK=params.TASK,
     )
     logger.info(
         f"========== GANDALF TRAIN END ({time.perf_counter() - run_start:.2f}s total) =========="

@@ -62,6 +62,6 @@ At runtime the code computes:
 - `PROJECT = <model_name>_<target>`
 - `RES_DIR = <output_dir>/<PROJECT>`
 - `FIG_DIR = <RES_DIR>/figures`
-- `LOGGING_DIR = <RES_DIR>/logs`
+- `LOGGING_DIR = <RES_DIR>/logs` when TensorBoard logging is used
 - `DATA_DIR = <RES_DIR>/data`
 - `EVAL_DIR = <RES_DIR>/evaluate`

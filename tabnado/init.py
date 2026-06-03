@@ -6,6 +6,7 @@ PARAMS_TEMPLATE = """# tabnado parameters
 # Required keys
 target: TARGET_NAME
 model_name: GANDALF
+task: auto
 sweep_fraction: 0.2
 gtf_file: data/gencode.vM25.annotation.gtf.gz
 eval_chr: chr8
@@ -44,12 +45,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    output_path = Path(args.path)
-    if output_path.exists() and not args.force:
-        parser.error(f"{output_path} already exists. Re-run with --force to overwrite.")
+    from tabnado.api import write_params_template
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(PARAMS_TEMPLATE, encoding="utf-8")
+    try:
+        output_path = write_params_template(args.path, force=args.force)
+    except FileExistsError as exc:
+        parser.error(str(exc))
+
     print(f"Wrote template params file to {output_path}")
 
 

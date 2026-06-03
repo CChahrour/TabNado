@@ -10,6 +10,12 @@ from loguru import logger
 from matplotlib import cm, colors
 
 from tabnado.params import PipelineParams
+from tabnado.shap_utils import (
+    default_shap_output_columns,
+    plot_shap_stacked_bar,
+    shap_values_to_output_list,
+)
+from tabnado.tasks import classification_shap_output_columns, resolve_task
 from tabnado.utils import figure_style
 
 
@@ -22,6 +28,7 @@ def compute_xgb_shap(
     RES_DIR: str = "results",
     FIG_DIR: str = "figures",
     tile_size: int = 100,
+    task: str = "auto",
     wandb_run=None,
 ):
     """Compute SHAP values for XGBoost model using TreeExplainer."""
@@ -35,6 +42,15 @@ def compute_xgb_shap(
             "Cannot compute SHAP: empty training data or no feature columns"
         )
 
+    is_classifier_artifact = (
+        isinstance(final_model, dict) and final_model.get("task") == "classification"
+    )
+    resolved_task = (
+        "classification"
+        if is_classifier_artifact
+        else resolve_task(task, train_data, target_cols)
+    )
+
     X_bg = train_data[feature_cols].sample(min(1000, len(train_data)), random_state=42)
     X_test_sub = test_data[feature_cols].sample(
         n=min(1000, len(test_data)), random_state=42
@@ -47,42 +63,46 @@ def compute_xgb_shap(
 
     # XGBoost: use TreeExplainer per estimator (fast, exact)
     sv_list = []
-    estimators = final_model if isinstance(final_model, list) else [final_model]
+    if is_classifier_artifact:
+        estimators = [final_model["model"]]
+    else:
+        estimators = final_model if isinstance(final_model, list) else [final_model]
     for booster in estimators:
         explainer = shap.Explainer(booster, X_bg)
         ex = explainer(X_test_sub, check_additivity=False)
-        if isinstance(ex, list):
-            if not ex:
-                raise ValueError("SHAP explainer returned an empty explanation list")
-            ex_values = ex[0].values if hasattr(ex[0], "values") else ex[0]
-        else:
-            ex_values = ex.values if hasattr(ex, "values") else ex
-        sv_list.append(np.asarray(ex_values))
-    shap_values = sv_list
+        sv_list.extend(shap_values_to_output_list(ex))
 
-    # SHAP may return either a list (one array per target) or a single
-    # 3D array shaped (n_samples, n_features, n_targets). Normalize both
-    # cases to a list of 2D arrays: one (n_samples, n_features) per target.
-    if isinstance(shap_values, list):
-        sv_list = [
-            np.asarray(sv).squeeze(-1)
-            if np.asarray(sv).ndim == 3 and np.asarray(sv).shape[-1] == 1
-            else np.asarray(sv)
-            for sv in shap_values
-        ]
-    else:
-        sv = np.asarray(shap_values)
-        if sv.ndim == 3 and sv.shape[-1] == len(target_cols):
-            sv_list = [sv[:, :, i] for i in range(sv.shape[-1])]
-        elif sv.ndim == 3 and sv.shape[-1] == 1:
-            sv_list = [sv.squeeze(-1)]
+    if not sv_list:
+        raise ValueError("SHAP explainer returned no values")
+
+    if resolved_task == "classification":
+        target_col = (
+            final_model.get("target_col", target_cols[0])
+            if is_classifier_artifact
+            else target_cols[0]
+        )
+        if is_classifier_artifact:
+            classes = [str(cls) for cls in final_model["classes"]]
         else:
-            sv_list = [sv]
+            estimator = estimators[0]
+            if hasattr(estimator, "classes_") and len(
+                getattr(estimator, "classes_")
+            ) == len(sv_list):
+                classes = [str(cls) for cls in estimator.classes_]
+            else:
+                classes = sorted(train_data[target_col].astype(str).unique())
+        output_cols = classification_shap_output_columns(
+            target_col,
+            classes,
+            len(sv_list),
+        )
+    else:
+        output_cols = default_shap_output_columns(target_cols, len(sv_list))
 
     mean_abs_shap = pd.DataFrame(
         np.stack([np.abs(sv).mean(axis=0) for sv in sv_list]).T,
         index=feature_cols,
-        columns=target_cols,
+        columns=output_cols,
     )
     shap_mean_csv = f"{SHAP_DIR}/shap_mean_abs.csv"
     mean_abs_shap.to_csv(shap_mean_csv)
@@ -102,7 +122,7 @@ def compute_xgb_shap(
     clustermap_data = clustermap_data.groupby(level=0).mean()
 
     n_rows = len(clustermap_data)
-    n_cols = len(target_cols)
+    n_cols = len(output_cols)
     g = sns.clustermap(
         clustermap_data,
         row_cluster=n_rows > 1,
@@ -142,12 +162,19 @@ def compute_xgb_shap(
 
         wandb_run.log({"shap/clustermap": wandb.Image(clustermap_path)})
 
+    plot_shap_stacked_bar(
+        mean_abs_shap,
+        FIG_DIR,
+        SHAP_DIR,
+        wandb_run=wandb_run,
+    )
+
     # === SPATIAL SHAP ANALYSIS ===
     # Aggregate SHAP values by genomic offset from TSS
     _plot_spatial_shap(
         sv_list,
         feature_cols,
-        target_cols,
+        output_cols,
         X_test_sub.index,
         SHAP_DIR,
         FIG_DIR,
@@ -329,6 +356,7 @@ def main():
     _, _, target_cols, feature_cols, train_data, _, test_data = load_data(
         **vars(params)
     )
+    task = resolve_task(params["TASK"], train_data, target_cols)
 
     compute_xgb_shap(
         final_model,
@@ -338,6 +366,7 @@ def main():
         target_cols,
         RES_DIR=params["RES_DIR"],
         FIG_DIR=params["FIG_DIR"],
+        task=task,
     )
     logger.info(
         "========== XGBoost SHAP END ({:.2f}s total) ==========".format(

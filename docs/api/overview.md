@@ -21,6 +21,12 @@ Core modules in this project:
 - `tabnado.xgb_train`: Final XGBoost model training with best hyperparameters
 - `tabnado.xgb_shap`: SHAP analysis for XGBoost models
 
+## CatBoost Backend
+
+- `tabnado.catboost_sweep`: CatBoost hyperparameter sweep
+- `tabnado.catboost_train`: Final CatBoost model training with best hyperparameters
+- `tabnado.catboost_shap`: SHAP analysis for CatBoost models
+
 ## Orchestration
 
 - `tabnado.api`: `run_pipeline()` orchestrates all stages
