@@ -87,16 +87,19 @@ def build_signal_df(
     signal_path: str,
     rpkm_path: str | None = None,
     chunk_size_rows: int | None = None,
+    minmax_scale: bool = True,
+    clip_signal: bool = True,
+    uq_normalise: bool = True,
 ) -> pd.DataFrame:
     """Extract binned signal and scale, then save to parquet.
 
     Pipeline:
         0. RPKM normalisation (lazy, using ds.coverage.library_sizes)
         1. Compute array into memory (cached to rpkm_path if provided)
-        2. UQ normalisation — divide per column by 75th percentile of non-zero values
-        3. Clip at 99.5th percentile per column
+        2. UQ normalisation — divide per column by 75th percentile of non-zero values — only when uq_normalise=True
+        3. Clip at 99.5th percentile per column — only when clip_signal=True
         4. log1p (numpy)
-        5. MinMax [0, 1] per column (sklearn MinMaxScaler)
+        5. MinMax [0, 1] per column (sklearn MinMaxScaler) — only when minmax_scale=True
     """
 
     def _reduce_signal():
@@ -164,20 +167,23 @@ def build_signal_df(
                 rpkm_path
             )
 
-    # UQ normalisation on non-zeros per column
-    non_zeros = np.where(arr > 0, arr, np.nan)
-    upper_quartile = np.nanpercentile(non_zeros, 75, axis=0)
-    upper_quartile = np.where(upper_quartile == 0, 1.0, upper_quartile)
-    arr = arr / upper_quartile
+    # UQ normalisation on non-zeros per column — GANDALF only
+    if uq_normalise:
+        non_zeros = np.where(arr > 0, arr, np.nan)
+        upper_quartile = np.nanpercentile(non_zeros, 75, axis=0)
+        upper_quartile = np.where(upper_quartile == 0, 1.0, upper_quartile)
+        arr = arr / upper_quartile
 
-    # clip at 99.5th percentile per column
-    arr = np.clip(arr, None, np.percentile(arr, 99.5, axis=0))
+    # clip at 99.5th percentile per column — GANDALF only
+    if clip_signal:
+        arr = np.clip(arr, None, np.percentile(arr, 99.5, axis=0))
 
     # log1p
     arr = np.log1p(arr)
 
-    # MinMax [0, 1] per column
-    arr = MinMaxScaler().fit_transform(arr).astype(np.float32)
+    # MinMax [0, 1] per column — GANDALF only
+    if minmax_scale:
+        arr = MinMaxScaler().fit_transform(arr).astype(np.float32)
 
     signal_df = pd.DataFrame(arr, index=window_names, columns=sample_names)
     signal_df = signal_df.fillna(0)
@@ -288,13 +294,12 @@ def validate_features(
     eval_data: pd.DataFrame,
     test_data: pd.DataFrame,
     feature_cols: list[str],
+    check_range: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Warn and fix any out-of-[0,1] or NaN values in feature columns."""
+    """Warn and fix NaN values; optionally enforce [0, 1] range (GANDALF only)."""
     splits = [("train", train_data), ("eval", eval_data), ("test", test_data)]
     result = []
     for split_name, df in splits:
-        lo = df[feature_cols].min().min()
-        hi = df[feature_cols].max().max()
         nan_count = df[feature_cols].isnull().sum().sum()
         if nan_count > 0:
             logger.warning(
@@ -302,16 +307,19 @@ def validate_features(
             )
             df = df.copy()
             df[feature_cols] = df[feature_cols].fillna(0)
-        if lo < 0.0 or hi > 1.0:
-            logger.warning(
-                f"{split_name}: features out of [0,1] (min={lo:.4f}, max={hi:.4f}) — clipping"
-            )
-            df = df.copy()
-            df[feature_cols] = df[feature_cols].clip(lower=0.0, upper=1.0)
-        else:
-            logger.info(
-                f"{split_name}: features in range [0,1] ✓ (min={lo:.4f}, max={hi:.4f})"
-            )
+        if check_range:
+            lo = df[feature_cols].min().min()
+            hi = df[feature_cols].max().max()
+            if lo < 0.0 or hi > 1.0:
+                logger.warning(
+                    f"{split_name}: features out of [0,1] (min={lo:.4f}, max={hi:.4f}) — clipping"
+                )
+                df = df.copy()
+                df[feature_cols] = df[feature_cols].clip(lower=0.0, upper=1.0)
+            else:
+                logger.info(
+                    f"{split_name}: features in range [0,1] ✓ (min={lo:.4f}, max={hi:.4f})"
+                )
         result.append(df)
     return result[0], result[1], result[2]
 
@@ -387,6 +395,9 @@ def load_or_build_datasets(
     fig_dir: str | None = None,
     target_cols: list[str] | None = None,
     chunk_size_rows: int = 1_000_000,
+    minmax_scale: bool = True,
+    clip_signal: bool = True,
+    uq_normalise: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Return (train_data, eval_data, test_data), building from scratch if not cached."""
     if (
@@ -423,6 +434,9 @@ def load_or_build_datasets(
             signal_path,
             rpkm_path=rpkm_path,
             chunk_size_rows=chunk_size_rows,
+            minmax_scale=minmax_scale,
+            clip_signal=clip_signal,
+            uq_normalise=uq_normalise,
         )
 
     logger.info(f"Splitting by chromosome: eval={eval_chr}, test={test_chr}")
@@ -590,8 +604,14 @@ def _contigs_from_model_frame(df: pd.DataFrame) -> pd.Series:
     return regions.str.split(":").str[0]
 
 
-def _scale_parquet_features(df: pd.DataFrame, feature_cols: list[str]) -> pd.DataFrame:
-    """Scale raw coverage-like parquet features to [0, 1] when needed."""
+def _scale_parquet_features(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    minmax_scale: bool = True,
+    clip_signal: bool = True,
+    uq_normalise: bool = True,
+) -> pd.DataFrame:
+    """Scale raw coverage-like parquet features; UQ, clipping, and MinMax are optional."""
     if not feature_cols:
         return df
 
@@ -604,29 +624,33 @@ def _scale_parquet_features(df: pd.DataFrame, feature_cols: list[str]) -> pd.Dat
     if finite.size and finite.min() >= 0.0 and finite.max() <= 1.0:
         return df
 
-    logger.info("Scaling parquet features to [0, 1]")
+    logger.info("Scaling parquet features (log1p)")
     if finite.size and finite.min() >= 0.0:
-        non_zeros = np.where(arr > 0, arr, np.nan)
-        has_nonzero = np.isfinite(non_zeros).any(axis=0)
-        upper_quartile = np.ones(arr.shape[1], dtype="float32")
-        if has_nonzero.any():
-            upper_quartile[has_nonzero] = np.nanpercentile(
-                non_zeros[:, has_nonzero], 75, axis=0
+        if uq_normalise:
+            non_zeros = np.where(arr > 0, arr, np.nan)
+            has_nonzero = np.isfinite(non_zeros).any(axis=0)
+            upper_quartile = np.ones(arr.shape[1], dtype="float32")
+            if has_nonzero.any():
+                upper_quartile[has_nonzero] = np.nanpercentile(
+                    non_zeros[:, has_nonzero], 75, axis=0
+                )
+            upper_quartile = np.where(
+                np.isfinite(upper_quartile) & (upper_quartile > 0),
+                upper_quartile,
+                1.0,
             )
-        upper_quartile = np.where(
-            np.isfinite(upper_quartile) & (upper_quartile > 0),
-            upper_quartile,
-            1.0,
-        )
-        arr = arr / upper_quartile
-        clip_at = np.nanpercentile(arr, 99.5, axis=0)
-        clip_at = np.where(np.isfinite(clip_at), clip_at, 1.0)
-        arr = np.clip(arr, None, clip_at)
+            arr = arr / upper_quartile
+        if clip_signal:
+            clip_at = np.nanpercentile(arr, 99.5, axis=0)
+            clip_at = np.where(np.isfinite(clip_at), clip_at, 1.0)
+            arr = np.clip(arr, None, clip_at)
         arr = np.log1p(np.clip(arr, 0.0, None))
 
-    scaled = MinMaxScaler().fit_transform(arr).astype(np.float32)
+    if minmax_scale:
+        arr = MinMaxScaler().fit_transform(arr).astype(np.float32)
+
     result = df.copy()
-    result.loc[:, feature_cols] = scaled
+    result.loc[:, feature_cols] = arr
     return result
 
 
@@ -636,6 +660,9 @@ def load_parquet_data(
     DATA_DIR: str,
     EVAL_CHR: str = "chr8",
     TEST_CHR: str = "chr9",
+    minmax_scale: bool = True,
+    clip_signal: bool = True,
+    uq_normalise: bool = True,
 ):
     """Load precomputed parquet data and create train/eval/test chromosome splits."""
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
@@ -653,7 +680,7 @@ def load_parquet_data(
             target_cols = [TARGET]
             feature_cols = _infer_parquet_feature_cols(train_data, TARGET)
             train_data, eval_data, test_data = validate_features(
-                train_data, eval_data, test_data, feature_cols
+                train_data, eval_data, test_data, feature_cols, check_range=minmax_scale
             )
             samples = feature_cols + target_cols
             return (
@@ -672,7 +699,7 @@ def load_parquet_data(
     data = _load_parquet_model_frame(DATASET, TARGET)
     target_cols = [TARGET]
     feature_cols = _infer_parquet_feature_cols(data, TARGET)
-    data = _scale_parquet_features(data, feature_cols)
+    data = _scale_parquet_features(data, feature_cols, minmax_scale=minmax_scale, clip_signal=clip_signal, uq_normalise=uq_normalise)
 
     contigs = _contigs_from_model_frame(data)
     logger.info(f"Splitting parquet by chromosome: eval={EVAL_CHR}, test={TEST_CHR}")
@@ -684,7 +711,7 @@ def load_parquet_data(
     eval_data = data.loc[eval_mask]
     test_data = data.loc[test_mask]
     train_data, eval_data, test_data = validate_features(
-        train_data, eval_data, test_data, feature_cols
+        train_data, eval_data, test_data, feature_cols, check_range=minmax_scale
     )
 
     train_data.to_parquet(dataset_train_path)
@@ -716,9 +743,14 @@ def load_data(
     STEP_SIZE: int = 100,
     TILE_SIZE: int = 100,
     CHUNK_SIZE_ROWS: int | None = None,
+    MODEL_TYPE: str = "gandalf",
     **_,
 ):
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+    gandalf = MODEL_TYPE.lower() == "gandalf"
+    minmax_scale = gandalf
+    clip_signal = gandalf
+    uq_normalise = gandalf
 
     if _is_parquet_dataset(DATASET):
         return load_parquet_data(
@@ -727,6 +759,9 @@ def load_data(
             DATA_DIR=DATA_DIR,
             EVAL_CHR=EVAL_CHR,
             TEST_CHR=TEST_CHR,
+            minmax_scale=minmax_scale,
+            clip_signal=clip_signal,
+            uq_normalise=uq_normalise,
         )
 
     ds = qn.open_dataset(DATASET)
@@ -755,6 +790,9 @@ def load_data(
         fig_dir=FIG_DIR,
         target_cols=target_cols,
         chunk_size_rows=CHUNK_SIZE_ROWS,
+        minmax_scale=minmax_scale,
+        clip_signal=clip_signal,
+        uq_normalise=uq_normalise,
     )
 
     actual_target_cols = [col for col in target_cols if col in train_data.columns]
@@ -766,7 +804,7 @@ def load_data(
         if any(col.startswith(pat) for pat in feature_col_patterns)
     ]
     train_data, eval_data, test_data = validate_features(
-        train_data, eval_data, test_data, actual_feature_cols
+        train_data, eval_data, test_data, actual_feature_cols, check_range=minmax_scale
     )
     n_tiles = len(actual_feature_cols) // max(len(feature_cols), 1)
     logger.info(

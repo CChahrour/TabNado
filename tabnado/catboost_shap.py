@@ -5,64 +5,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import shap
 from loguru import logger
 from matplotlib import cm, colors
 
 from tabnado.params import PipelineParams
-from tabnado.shap_utils import default_shap_output_columns, plot_shap_stacked_bar
+from tabnado.shap_utils import (
+    default_shap_output_columns,
+    plot_shap_stacked_bar,
+    shap_values_to_output_list,
+)
 from tabnado.tasks import classification_shap_output_columns, resolve_task
 from tabnado.utils import figure_style, parse_params_arg, setup_logger
 from tabnado.xgb_shap import _parse_offset_from_column, _plot_spatial_shap
-
-
-def _import_catboost_pool():
-    try:
-        from catboost import Pool
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "CatBoost SHAP requested but catboost is not installed. "
-            "Install/sync TabNado with the catboost dependency first."
-        ) from exc
-    return Pool
-
-
-def _catboost_shap_to_output_list(
-    shap_values,
-    n_features: int,
-) -> list[np.ndarray]:
-    """Normalize CatBoost SHAP values to one 2D feature array per output."""
-    values = np.asarray(shap_values)
-
-    if values.ndim == 2:
-        if values.shape[1] == n_features + 1:
-            return [values[:, :n_features]]
-        if values.shape[1] == n_features:
-            return [values]
-        raise ValueError(f"Unexpected CatBoost SHAP shape: {values.shape}")
-
-    if values.ndim == 3:
-        if values.shape[2] == n_features + 1:
-            return [
-                values[:, output_idx, :n_features]
-                for output_idx in range(values.shape[1])
-            ]
-        if values.shape[1] == n_features + 1:
-            return [
-                values[:, :n_features, output_idx]
-                for output_idx in range(values.shape[2])
-            ]
-        if values.shape[2] == n_features:
-            return [
-                values[:, output_idx, :]
-                for output_idx in range(values.shape[1])
-            ]
-        if values.shape[1] == n_features:
-            return [
-                values[:, :, output_idx]
-                for output_idx in range(values.shape[2])
-            ]
-
-    raise ValueError(f"Unexpected CatBoost SHAP shape: {values.shape}")
 
 
 def compute_catboost_shap(
@@ -78,7 +33,7 @@ def compute_catboost_shap(
     task: str = "auto",
     wandb_run=None,
 ):
-    """Compute SHAP values for CatBoost models using CatBoost Tree SHAP."""
+    """Compute SHAP values for CatBoost models using the shap package."""
     figure_style()
     SHAP_DIR = os.path.join(RES_DIR, "shap")
     os.makedirs(SHAP_DIR, exist_ok=True)
@@ -97,19 +52,30 @@ def compute_catboost_shap(
         if is_classifier_artifact
         else resolve_task(task, train_data, target_cols)
     )
+    is_multiclass_classifier = False
+    if resolved_task == "classification":
+        if is_classifier_artifact:
+            is_multiclass_classifier = (
+                final_model.get("problem_type") == "multiclass"
+                or len(final_model.get("classes", [])) > 2
+            )
+        else:
+            is_multiclass_classifier = (
+                train_data[target_cols[0]].astype(str).nunique() > 2
+            )
 
+    X_bg = train_data[feature_cols]
     shap_data = (
         pd.concat([train_data, eval_data, test_data], axis=0)
         if eval_data is not None
         else pd.concat([train_data, test_data], axis=0)
     )
     X_regions = shap_data[feature_cols]
+    background_label = "none" if is_multiclass_classifier else str(len(X_bg))
     logger.info(
-        "Computing SHAP values for CatBoost (shap_regions={})".format(len(X_regions))
+        "Computing SHAP values for CatBoost with shap.Explainer "
+        "(background={}, shap_regions={})".format(background_label, len(X_regions))
     )
-
-    Pool = _import_catboost_pool()
-    pool = Pool(X_regions, feature_names=feature_cols)
 
     sv_list: list[np.ndarray] = []
     if is_classifier_artifact:
@@ -118,11 +84,18 @@ def compute_catboost_shap(
         estimators = final_model if isinstance(final_model, list) else [final_model]
 
     for estimator in estimators:
-        shap_values = estimator.get_feature_importance(pool, type="ShapValues")
-        sv_list.extend(_catboost_shap_to_output_list(shap_values, len(feature_cols)))
+        if is_multiclass_classifier:
+            # SHAP's CatBoost multiclass TreeExplainer crashes with a background
+            # dataset in the current supported stack, but the no-background
+            # TreeExplainer returns per-class values correctly.
+            explainer = shap.Explainer(estimator)
+        else:
+            explainer = shap.Explainer(estimator, X_bg)
+        ex = explainer(X_regions, check_additivity=False)
+        sv_list.extend(shap_values_to_output_list(ex))
 
     if not sv_list:
-        raise ValueError("CatBoost SHAP returned no values")
+        raise ValueError("SHAP explainer returned no values")
 
     if resolved_task == "classification":
         target_col = (
