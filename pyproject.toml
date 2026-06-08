@@ -27,7 +27,7 @@ dependencies = [
     "scikit-learn==1.8.0",
     "scipy==1.17.1",
     "seaborn==0.13.2",
-    "shap==0.39.0",
+    "shap>=0.52.0",
     "torch==2.11.0",
     "pytorch-lightning>=2.0.0,<2.7.0",
     "pytorch-tabular==1.2.0",
@@ -36,7 +36,8 @@ dependencies = [
     "tensorboard",
     "wandb==0.26.1",
     "wandb-workspaces==0.3.9",
-    "catboost==1.2.2",
+    "catboost>=1.2.5",
+    "imbalanced-learn>=0.14",
     "xgboost>=2.0.0",
     "joblib",
 ]

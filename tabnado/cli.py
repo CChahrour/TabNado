@@ -7,12 +7,14 @@ model_name: GANDALF
 task: auto
 sweep_fraction: 0.2
 gtf_file: data/gencode.vM25.annotation.gtf.gz
-eval_chr: chr8
-test_chr: chr9
+eval_chr: chr8  # blank, single name, or list (e.g. [\"chr8\", \"chr10\"]) — leave blank for no eval split
+test_chr: [\"chr9\"]  # single name or list of chromosome names
 output_dir: results
 dataset: data/dataset
 windows_bed: data/tss_windows.bed
 n_sweeps: 10
+catboost_search_space: extended  # or "notebook" for the narrower 4-param search
+class_balance: none  # "none", "undersample", "oversample", or "smote" (classification only)
 logging: wandb
 min_target: 1
 min_features: 10

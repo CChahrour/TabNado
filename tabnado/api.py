@@ -21,12 +21,44 @@ ParamsPath = Path | str | None
 
 
 def load_params(params_path: ParamsPath = None) -> PipelineParams:
-    """Load tabnado pipeline parameters.
+    """Load and validate tabnado pipeline parameters from a YAML file.
+
+    Reads the YAML at ``params_path``, validates the required/optional keys
+    (``logging``, ``model_name``, ``task``, ``catboost_search_space``, ...),
+    derives the run's directory layout (``RES_DIR``/``FIG_DIR``/
+    ``LOGGING_DIR``/``DATA_DIR`` from ``output_dir``/``model_name``/``target``),
+    and returns the resulting :class:`~tabnado.params.PipelineParams`. This is
+    the entry point every ``run_*`` function in this module uses to resolve
+    its configuration — call it directly if you want to inspect or tweak
+    parameters (e.g. ``params.RES_DIR``, ``params.MODEL_TYPE``) before driving
+    the pipeline stages yourself.
 
     Parameters
     ----------
     params_path
-        Path to a params YAML file. Defaults to ``params.yaml`` to mirror the CLI.
+        Path to a params YAML file (e.g. one written by
+        :func:`write_params_template`/``tabnado-init``). Defaults to
+        ``params.yaml`` in the current working directory, mirroring the CLI's
+        ``--params``/``-p`` default.
+
+    Returns
+    -------
+    PipelineParams
+        The validated, fully-resolved parameter set (a frozen view of the
+        YAML plus derived fields) used to configure every pipeline stage.
+
+    Raises
+    ------
+    ValueError
+        If required keys (``dataset``, ``model_name``) are missing/empty, or
+        if ``logging``/``model_name``/``task``/``catboost_search_space`` hold
+        values outside their respective allowed sets
+        (:data:`~tabnado.params.VALID_LOGGING_BACKENDS`,
+        :data:`~tabnado.params.VALID_MODEL_TYPES`,
+        :data:`~tabnado.params.VALID_TASKS`,
+        :data:`~tabnado.params.VALID_CATBOOST_SEARCH_SPACES`).
+    FileNotFoundError
+        If ``params_path`` does not exist.
     """
     resolved_path = Path("params.yaml") if params_path is None else params_path
     return PipelineParams.from_yaml(resolved_path)
@@ -55,6 +87,28 @@ def _make_wandb_config(params: PipelineParams):
     return WandbConfig.from_params(params)
 
 
+def _balanced_train_data(
+    params: PipelineParams,
+    task: str,
+    train_data,
+    target_cols: list[str],
+):
+    """Resample ``train_data`` per ``params.CLASS_BALANCE`` for fitting/tuning.
+
+    Mirrors the notebook's ``RandomUnderSampler`` step — applied only to the
+    data the model fits/tunes on. Returns ``train_data`` unchanged for
+    regression tasks or ``class_balance: none``.
+    """
+    if task != "classification" or params.CLASS_BALANCE == "none":
+        return train_data
+
+    from tabnado.data import balance_classes
+    from tabnado.utils import require_single_classification_target
+
+    target_col = require_single_classification_target(target_cols)
+    return balance_classes(train_data, target_col, method=params.CLASS_BALANCE)
+
+
 def _load_best_hyperparameters(params: PipelineParams) -> dict:
     hp_path = Path(params.RES_DIR) / "best_hyperparameters.json"
     if not hp_path.exists():
@@ -68,19 +122,99 @@ def _load_best_hyperparameters(params: PipelineParams) -> dict:
 
 
 def evaluate_model(*args, **kwargs):
+    """Compute test-set metrics and diagnostic plots for a trained model.
+
+    Thin lazy-import wrapper around :func:`tabnado.evaluate.evaluate_model`,
+    kept here so it can be imported from :mod:`tabnado.api` without pulling in
+    the (heavier) evaluation dependencies at module import time.
+
+    Parameters
+    ----------
+    *args, **kwargs
+        Forwarded verbatim to :func:`tabnado.evaluate.evaluate_model`. In
+        practice this is called with the trained backend model, the held-out
+        ``test_data`` frame, ``target_cols``, and keyword arguments
+        ``feature_cols``, ``FIG_DIR``, ``RES_DIR``, ``model_type``, ``task``,
+        and (optionally) ``wandb_run``.
+
+    Returns
+    -------
+    Whatever :func:`tabnado.evaluate.evaluate_model` returns — typically a
+    dict of computed metrics. Regression runs get scatter/residual plots and
+    regression metrics (R2, MSE, ...); classification runs get ROC curves,
+    a confusion matrix, and classification metrics (accuracy, precision,
+    recall, weighted F1). Figures are written under ``FIG_DIR`` and metrics
+    are saved as JSON under ``RES_DIR``; if a ``wandb_run`` is supplied the
+    metrics and figures are also logged there.
+    """
     from tabnado.evaluate import evaluate_model as _evaluate_model
 
     return _evaluate_model(*args, **kwargs)
 
 
 def compute_umap_embeddings(*args, **kwargs):
+    """Compute and plot a UMAP projection of the test-set feature space.
+
+    Thin lazy-import wrapper around
+    :func:`tabnado.evaluate.compute_umap_embeddings`, kept here so it can be
+    imported from :mod:`tabnado.api` without pulling in the UMAP/evaluation
+    dependencies at module import time.
+
+    Parameters
+    ----------
+    *args, **kwargs
+        Forwarded verbatim to :func:`tabnado.evaluate.compute_umap_embeddings`.
+        In practice this is called with the trained backend model, the
+        held-out ``test_data`` frame, ``feature_cols``, ``target_cols``, and
+        keyword arguments ``FIG_DIR``, ``RES_DIR``, ``target``, ``model_type``,
+        ``task``, and (optionally) ``wandb_run``.
+
+    Returns
+    -------
+    Whatever :func:`tabnado.evaluate.compute_umap_embeddings` returns —
+    typically the embedding array/frame. A 2D UMAP scatter plot coloured by
+    the target (or, for classification, by predicted class) is saved under
+    ``FIG_DIR``; if a ``wandb_run`` is supplied the plot is also logged there.
+    """
     from tabnado.evaluate import compute_umap_embeddings as _compute_umap_embeddings
 
     return _compute_umap_embeddings(*args, **kwargs)
 
 
 def run_pipeline(params_path: Path | str | None = None) -> None:
-    """Run the full tabnado pipeline."""
+    """Run the full tabnado pipeline end-to-end: data -> sweep -> train -> evaluate -> SHAP.
+
+    This mirrors the ``tabnado-run`` CLI entry point and is the one-call way
+    to reproduce a complete experiment from a params YAML file. It loads (or
+    builds) the train/eval/test splits, runs a backend-specific Optuna
+    hyperparameter sweep, trains the final model with the best
+    hyperparameters, evaluates it on the held-out test set (metrics + UMAP),
+    and computes SHAP feature-importance plots — logging timing and a summary
+    for every stage. If ``logging: wandb`` is configured, a fresh run is
+    opened for the evaluation/SHAP stages and an evaluation report is created
+    at the end (failures there are logged as warnings, not raised).
+
+    Parameters
+    ----------
+    params_path
+        Path to a params YAML file (see :func:`load_params`). Defaults to
+        ``params.yaml`` in the current working directory, mirroring the CLI.
+
+    Returns
+    -------
+    None
+        All artefacts (datasets, sweep trial tables, ``best_hyperparameters.json``,
+        the trained model, figures, SHAP outputs, and logs) are written under
+        ``RES_DIR``/``FIG_DIR``/``LOGGING_DIR`` as configured by the params file;
+        nothing is returned to the caller.
+
+    Notes
+    -----
+    Equivalent to running the individual stages in order:
+    :func:`run_data`, :func:`run_sweep`, :func:`run_train`, :func:`run_evaluate`,
+    and :func:`run_shap` — except the sweep/train results are passed directly
+    in-memory to evaluation/SHAP rather than being reloaded from disk.
+    """
     warnings.filterwarnings("ignore")
     figure_style()
 
@@ -113,6 +247,12 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
     task = resolve_task(params.TASK, train_data, target_cols)
     logger.info(f"Model backend: {model_type}  task: {task}")
 
+    # Class rebalancing (mirrors the notebook's RandomUnderSampler step) is applied
+    # only to the data the model fits/tunes on — SHAP/evaluation still use the
+    # original `train_data`/`test_data`, matching how the manual notebook explains
+    # on `X_train` rather than the resampled `X_train_sampled`.
+    fit_train_data = _balanced_train_data(params, task, train_data, target_cols)
+
     # Setup wandb config if needed
     wandb_cfg = None
     if params.LOGGING == "wandb":
@@ -135,7 +275,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         model_type,
         feature_cols=feature_cols,
         target_cols=target_cols,
-        train_data=train_data,
+        train_data=fit_train_data,
         eval_data=eval_data,
         test_data=test_data,
         n_sweeps=params.N_SWEEPS,
@@ -145,6 +285,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         LOGGING_DIR=params.LOGGING_DIR,
         wandb_cfg=wandb_cfg,
         TASK=task,
+        catboost_search_space=params.CATBOOST_SEARCH_SPACE,
     )
     logger.info(
         f"[stage:sweep] END {model_type} sweep in {{:.2f}}s".format(
@@ -159,7 +300,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         best_hp,
         feature_cols,
         target_cols,
-        train_data,
+        fit_train_data,
         eval_data,
         RES_DIR=params.RES_DIR,
         LOGGING_DIR=params.LOGGING_DIR,
@@ -262,7 +403,37 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
 
 
 def run_data(params_path: ParamsPath = None):
-    """Run the data loading/build stage and return loaded split data."""
+    """Build (or load cached) train/eval/test splits and report their shapes.
+
+    Mirrors the ``tabnado-data`` CLI entry point. Useful for validating a
+    dataset configuration — e.g. checking that the requested ``target`` has
+    matching samples, that enough feature assays survive filtering, and that
+    the chromosome-based eval/test split produces sensible region counts —
+    before committing to a full sweep/train run.
+
+    Parameters
+    ----------
+    params_path
+        Path to a params YAML file (see :func:`load_params`). Defaults to
+        ``params.yaml``.
+
+    Returns
+    -------
+    tuple
+        The 7-tuple returned by :func:`tabnado.data.load_data`:
+        ``(ds, samples, target_cols, feature_cols, train_data, eval_data, test_data)``
+        where ``ds`` is the underlying QuantNado dataset (``None`` for parquet
+        datasets), ``samples``/``target_cols``/``feature_cols`` are the
+        resolved sample/column names, and ``train_data``/``eval_data``/``test_data``
+        are the scaled, chromosome-split feature/target frames (cached as
+        parquet under ``DATA_DIR`` for reuse by later stages).
+
+    Notes
+    -----
+    Logs the resulting split shapes and feature/target counts at INFO level.
+    Subsequent calls reuse the cached parquet splits in ``DATA_DIR`` rather
+    than rebuilding from the raw dataset/GTF.
+    """
     params = load_params(params_path)
     _setup_api_stage(params, "MAKE DATASET")
     loaded = load_data(**vars(params))
@@ -275,7 +446,46 @@ def run_data(params_path: ParamsPath = None):
 
 
 def run_sweep(params_path: ParamsPath = None) -> dict:
-    """Run the backend-specific hyperparameter sweep and return best HP."""
+    """Run an Optuna hyperparameter sweep for the configured backend.
+
+    Mirrors the ``tabnado-sweep`` CLI entry point. Loads (or builds) the
+    train/eval/test splits, then dispatches to the backend-specific sweep
+    implementation in :mod:`tabnado.sweep` — all three backends
+    (``catboost``, ``xgboost``, ``gandalf``) search with an
+    :class:`optuna.samplers.TPESampler`-driven study of ``n_sweeps`` trials
+    over a fraction (``sweep_fraction``) of the training data, scored on
+    ``eval_data``/test folds — weighted F1 for CatBoost classification, macro
+    F1 for XGBoost/GANDALF classification, and R2 for regression tasks.
+    ``logging: wandb`` does **not** drive the search — it only logs the best
+    trial (and, for CatBoost/GANDALF, persists the per-trial table) for
+    record-keeping. CatBoost additionally honours ``catboost_search_space``
+    (``"extended"`` — the default 8-parameter space — or ``"notebook"``, the
+    narrower 4-parameter space used in the original analysis notebook).
+
+    Parameters
+    ----------
+    params_path
+        Path to a params YAML file (see :func:`load_params`). Defaults to
+        ``params.yaml``.
+
+    Returns
+    -------
+    dict
+        The best hyperparameters found, keyed by backend-native parameter
+        names (e.g. ``depth``/``boosting_type`` for CatBoost,
+        ``max_depth``/``learning_rate`` for XGBoost,
+        ``learning_rate``/``gflu_stages`` for GANDALF). The same dict is
+        persisted to ``RES_DIR/best_hyperparameters.json`` for
+        :func:`run_train` to consume; a ``<backend>_optuna_trials.csv`` trial
+        table is also written to ``RES_DIR``.
+
+    Notes
+    -----
+    If a sweep cannot run safely (too few tuning rows, fewer than two classes
+    in the tuning sample, NaN scores, or ``n_sweeps <= 0``), each backend
+    falls back to deterministic default hyperparameters and logs a warning
+    rather than raising.
+    """
     params = load_params(params_path)
     _setup_api_stage(params, f"{params.MODEL_TYPE.upper()} SWEEP START")
     run_start = perf_counter()
@@ -285,6 +495,7 @@ def run_sweep(params_path: ParamsPath = None) -> dict:
         **vars(params)
     )
     task = resolve_task(params.TASK, train_data, target_cols)
+    fit_train_data = _balanced_train_data(params, task, train_data, target_cols)
 
     from tabnado.sweep import sweep_model
 
@@ -292,7 +503,7 @@ def run_sweep(params_path: ParamsPath = None) -> dict:
         params.MODEL_TYPE,
         feature_cols=feature_cols,
         target_cols=target_cols,
-        train_data=train_data,
+        train_data=fit_train_data,
         eval_data=eval_data,
         test_data=test_data,
         n_sweeps=params.N_SWEEPS,
@@ -302,6 +513,7 @@ def run_sweep(params_path: ParamsPath = None) -> dict:
         LOGGING_DIR=params.LOGGING_DIR,
         wandb_cfg=wandb_cfg,
         TASK=task,
+        catboost_search_space=params.CATBOOST_SEARCH_SPACE,
     )
 
     logger.info(
@@ -313,7 +525,42 @@ def run_sweep(params_path: ParamsPath = None) -> dict:
 
 
 def run_train(params_path: ParamsPath = None):
-    """Run final model training for the configured backend and return the model."""
+    """Train the final model with the swept hyperparameters and persist it.
+
+    Mirrors the ``tabnado-train`` CLI entry point. Loads
+    ``RES_DIR/best_hyperparameters.json`` (raising if :func:`run_sweep` has
+    not been run yet), loads the train/eval splits, and fits a single final
+    model of the configured backend (``catboost``, ``xgboost``, or
+    ``gandalf``) on the full training set with early stopping against
+    ``eval_data``.
+
+    Parameters
+    ----------
+    params_path
+        Path to a params YAML file (see :func:`load_params`). Defaults to
+        ``params.yaml``.
+
+    Returns
+    -------
+    object
+        The trained model, in the backend's native form:
+
+        - ``catboost`` -> a fitted ``catboost.CatBoostClassifier``/``CatBoostRegressor``
+        - ``xgboost`` -> a fitted ``xgboost.XGBClassifier``/``XGBRegressor``
+          (or ``MultiOutputRegressor`` wrapper for multi-target regression)
+        - ``gandalf`` -> a fitted ``pytorch_tabular.TabularModel``
+
+        The model is also saved to ``RES_DIR/final_model/`` (as
+        ``catboost_model.joblib``, ``xgboost_model.joblib``, or a
+        PyTorch-Tabular model directory respectively) for later stages
+        (:func:`run_evaluate`, :func:`run_shap`) to reload independently.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no ``best_hyperparameters.json`` exists under ``RES_DIR`` —
+        run :func:`run_sweep` (or ``tabnado-sweep``) first.
+    """
     params = load_params(params_path)
     _setup_api_stage(params, f"{params.MODEL_TYPE.upper()} TRAIN START")
     run_start = perf_counter()
@@ -324,6 +571,7 @@ def run_train(params_path: ParamsPath = None):
         **vars(params)
     )
     task = resolve_task(params.TASK, train_data, target_cols)
+    fit_train_data = _balanced_train_data(params, task, train_data, target_cols)
 
     from tabnado.train import train_model
 
@@ -332,7 +580,7 @@ def run_train(params_path: ParamsPath = None):
         best_hp,
         feature_cols,
         target_cols,
-        train_data,
+        fit_train_data,
         eval_data,
         RES_DIR=params.RES_DIR,
         LOGGING_DIR=params.LOGGING_DIR,
@@ -350,7 +598,44 @@ def run_train(params_path: ParamsPath = None):
 
 
 def run_evaluate(params_path: ParamsPath = None) -> None:
-    """Run evaluation and UMAP for the configured backend."""
+    """Reload the trained model and compute test-set metrics, plots, and a UMAP.
+
+    Mirrors the ``tabnado-evaluate`` CLI entry point. Loads the held-out test
+    split and the model previously saved by :func:`run_train` from
+    ``RES_DIR/final_model/`` (raising if it doesn't exist), then runs
+    :func:`evaluate_model` (test metrics + diagnostic plots — ROC/confusion
+    matrix for classification, scatter/residuals + R2/MSE for regression) and
+    :func:`compute_umap_embeddings` (a 2D UMAP projection of the test feature
+    space) against it.
+
+    Parameters
+    ----------
+    params_path
+        Path to a params YAML file (see :func:`load_params`). Defaults to
+        ``params.yaml``.
+
+    Returns
+    -------
+    None
+        Metrics are logged and saved as JSON under ``RES_DIR``; plots
+        (ROC curves, confusion matrix, UMAP scatter, etc.) are written under
+        ``FIG_DIR``. Nothing is returned to the caller.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no trained model exists at ``RES_DIR/final_model`` —
+        run :func:`run_train` (or ``tabnado-train``) first.
+    RuntimeError
+        If a saved GANDALF model loads with no weights (corrupt/incomplete
+        checkpoint).
+
+    Notes
+    -----
+    Unlike :func:`run_pipeline`, this stage does not open a fresh wandb run —
+    metrics/plots are logged via the configured logging backend's default
+    mechanism only.
+    """
     params = load_params(params_path)
     _setup_api_stage(params, "EVALUATE START")
     run_start = perf_counter()
@@ -406,7 +691,40 @@ def run_evaluate(params_path: ParamsPath = None) -> None:
 
 
 def run_shap(params_path: ParamsPath = None) -> None:
-    """Run backend-specific SHAP analysis."""
+    """Reload the trained model and compute SHAP feature-importance analysis.
+
+    Mirrors the ``tabnado-shap`` CLI entry point. Loads the train/eval/test
+    splits and the model previously saved by :func:`run_train` (raising if it
+    doesn't exist), then dispatches to the backend-specific SHAP computation
+    in :mod:`tabnado.shap` (e.g. ``shap.TreeExplainer`` for CatBoost/XGBoost).
+
+    Parameters
+    ----------
+    params_path
+        Path to a params YAML file (see :func:`load_params`). Defaults to
+        ``params.yaml``.
+
+    Returns
+    -------
+    None
+        SHAP summary/bar plots (overall, and per-class for classification
+        tasks) are written under ``FIG_DIR``; any computed SHAP value arrays
+        or tables are saved under ``RES_DIR``. Nothing is returned to the
+        caller.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no trained model exists at ``RES_DIR/final_model`` —
+        run :func:`run_train` (or ``tabnado-train``) first.
+
+    Notes
+    -----
+    Uses ``train_data`` (and ``eval_data`` where relevant) as the background/
+    explanation set and ``test_data`` for held-out attributions — mirroring
+    the data the model was trained and evaluated on. Unlike
+    :func:`run_pipeline`, this stage does not open a fresh wandb run.
+    """
     params = load_params(params_path)
     _setup_api_stage(params, f"{params.MODEL_TYPE.upper()} SHAP START")
     run_start = perf_counter()
@@ -444,7 +762,38 @@ def run_shap(params_path: ParamsPath = None) -> None:
 
 
 def write_params_template(path: Path | str = "params.yaml", force: bool = False) -> Path:
-    """Write a starter params YAML file, matching ``tabnado-init``."""
+    """Write a starter params YAML template to ``path``.
+
+    Mirrors the ``tabnado-init`` CLI entry point. Writes
+    :data:`tabnado.cli.PARAMS_TEMPLATE` — a commented YAML skeleton covering
+    every key understood by :meth:`PipelineParams.from_yaml` (``target``,
+    ``model_name``, ``task``, ``sweep_fraction``, ``gtf_file``, ``eval_chr``/
+    ``test_chr``, ``output_dir``, ``dataset``, ``windows_bed``, ``n_sweeps``,
+    ``catboost_search_space``, ``logging``, ``min_target``, ``min_features``,
+    ``exclude_ips``, ``prefixes``, ``window_size``/``step_size``/``tile_size``)
+    — to give a new experiment a sensible, fully-annotated starting point that
+    the user edits in place.
+
+    Parameters
+    ----------
+    path
+        Output path for the params file. Parent directories are created if
+        missing. Defaults to ``params.yaml`` in the current working directory.
+    force
+        If ``True``, overwrite an existing file at ``path``. If ``False``
+        (the default) and the file already exists, raise instead of
+        clobbering an in-progress configuration.
+
+    Returns
+    -------
+    pathlib.Path
+        The path the template was written to (i.e. ``Path(path)``).
+
+    Raises
+    ------
+    FileExistsError
+        If ``path`` already exists and ``force`` is ``False``.
+    """
     from tabnado.cli import PARAMS_TEMPLATE
 
     output_path = Path(path)

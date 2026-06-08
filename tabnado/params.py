@@ -11,6 +11,18 @@ import yaml
 VALID_LOGGING_BACKENDS = {"wandb", "tensorboard"}
 VALID_MODEL_TYPES = {"catboost", "gandalf", "xgboost"}
 VALID_TASKS = {"auto", "classification", "regression"}
+VALID_CATBOOST_SEARCH_SPACES = {"extended", "notebook"}
+VALID_CLASS_BALANCE_METHODS = {"none", "undersample", "oversample", "smote"}
+
+
+def _as_chr_list(value: Any) -> list[str]:
+    """Normalise a YAML chromosome entry (blank, scalar, or list) to a list of names."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(v) for v in value if str(v).strip()]
+    value = str(value).strip()
+    return [value] if value else []
 
 
 @dataclass
@@ -38,13 +50,15 @@ class PipelineParams:
     WINDOW_SIZE: int = 2000
     STEP_SIZE: int = 250
     TILE_SIZE: int = 1000
-    EVAL_CHR: str = "chr8"
-    TEST_CHR: str = "chr9"
+    EVAL_CHR: list[str] = field(default_factory=lambda: ["chr8"])
+    TEST_CHR: list[str] = field(default_factory=lambda: ["chr9"])
     CHUNK_SIZE_ROWS: int = 1_000_000
     GTF_FILE: Optional[str] = None
     ENTITY: Optional[str] = None
     EXCLUDE_IPS: list = field(default_factory=list)
     ASSAY_PREFIXES: list = field(default_factory=list)
+    CATBOOST_SEARCH_SPACE: str = "extended"
+    CLASS_BALANCE: str = "none"
 
     @classmethod
     def from_yaml(cls, params_path: Path | str) -> "PipelineParams":
@@ -65,9 +79,13 @@ class PipelineParams:
         logging_backend = str(p.get("logging", "wandb")).lower()
         model_type = str(model_name).lower()
         task = str(p.get("task", "auto")).lower()
+        catboost_search_space = str(p.get("catboost_search_space", "extended")).lower()
+        class_balance = str(p.get("class_balance", "none")).lower()
         cls._validate_logging_backend(logging_backend)
         cls._validate_model_type(model_type)
         cls._validate_task(task)
+        cls._validate_catboost_search_space(catboost_search_space)
+        cls._validate_class_balance(class_balance)
 
         target = p.get("target")
         project = f"{model_name}_{target}"
@@ -104,13 +122,15 @@ class PipelineParams:
             WINDOW_SIZE=p.get("window_size", 2000),
             STEP_SIZE=p.get("step_size", 250),
             TILE_SIZE=p.get("tile_size", 1000),
-            EVAL_CHR=p.get("eval_chr", "chr8"),
-            TEST_CHR=p.get("test_chr", "chr9"),
+            EVAL_CHR=_as_chr_list(p.get("eval_chr", "chr8")),
+            TEST_CHR=_as_chr_list(p.get("test_chr", "chr9")),
             CHUNK_SIZE_ROWS=chunk_size_rows,
             GTF_FILE=p.get("gtf_file"),
             ENTITY=p.get("entity"),
             EXCLUDE_IPS=p.get("exclude_ips", []),
             ASSAY_PREFIXES=p.get("prefixes", []),
+            CATBOOST_SEARCH_SPACE=catboost_search_space,
+            CLASS_BALANCE=class_balance,
         )
 
     @staticmethod
@@ -131,6 +151,22 @@ class PipelineParams:
     def _validate_task(task: str) -> None:
         if task not in VALID_TASKS:
             raise ValueError(f"Invalid task '{task}'. Use one of {VALID_TASKS}.")
+
+    @staticmethod
+    def _validate_catboost_search_space(search_space: str) -> None:
+        if search_space not in VALID_CATBOOST_SEARCH_SPACES:
+            raise ValueError(
+                f"Invalid catboost_search_space '{search_space}'. "
+                f"Use one of {VALID_CATBOOST_SEARCH_SPACES}."
+            )
+
+    @staticmethod
+    def _validate_class_balance(class_balance: str) -> None:
+        if class_balance not in VALID_CLASS_BALANCE_METHODS:
+            raise ValueError(
+                f"Invalid class_balance '{class_balance}'. "
+                f"Use one of {VALID_CLASS_BALANCE_METHODS}."
+            )
 
     def create_directories(self) -> None:
         """Create all output directories for this pipeline run."""

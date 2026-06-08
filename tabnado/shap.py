@@ -110,7 +110,7 @@ def plot_shap_stacked_bar(
     logger.info(f"Saved SHAP stacked bar table: {csv_path}")
 
     n_rows, n_outputs = cofactor_data.shape
-    fig_height = max(5.5, min(18, n_rows * 0.35 + 2))
+    fig_height = max(5.5, min(18, n_rows * 0.35))
     fig, ax = plt.subplots(figsize=(8, fig_height))
     left = np.zeros(n_rows, dtype=float)
     colors_palette = sns.color_palette("tab20", n_colors=max(n_outputs, 1))
@@ -359,6 +359,68 @@ def _plot_clustermap(
         import wandb
 
         wandb_run.log({"shap/clustermap": wandb.Image(clustermap_path)})
+
+
+def plot_shap_summary_per_class(
+    sv_list: list[np.ndarray],
+    X_regions: pd.DataFrame,
+    feature_cols: list[str],
+    classes: list[str],
+    target_col: str,
+    FIG_DIR: str,
+    SHAP_DIR: str,
+    wandb_run=None,
+) -> None:
+    """Per-class ``shap.summary_plot`` beeswarm charts plus an overall bar plot.
+
+    Mirrors the per-class ``shap.summary_plot`` analysis in
+    ``06-model-sem-vs-rs411-catboost.ipynb`` (cells 37-38): one multiclass
+    bar overview (``plot_type="bar"``) and one beeswarm summary plot per class.
+    """
+    if len(sv_list) != len(classes):
+        logger.warning(
+            "Skipping per-class SHAP summary plots: {} SHAP outputs but {} classes".format(
+                len(sv_list), len(classes)
+            )
+        )
+        return
+
+    X_display = X_regions[feature_cols]
+    out_dir = os.path.join(SHAP_DIR, "summary_plots")
+    os.makedirs(out_dir, exist_ok=True)
+
+    bar_path = f"{out_dir}/shap_summary_bar_{target_col}.png"
+    shap_pkg.summary_plot(
+        sv_list,
+        X_display,
+        plot_type="bar",
+        class_names=classes,
+        feature_names=feature_cols,
+        show=False,
+    )
+    plt.savefig(bar_path, bbox_inches="tight", dpi=120)
+    plt.close()
+    logger.info(f"Saved SHAP multiclass bar summary: {bar_path}")
+    if wandb_run is not None:
+        import wandb
+
+        wandb_run.log({"shap/summary_bar": wandb.Image(bar_path)})
+
+    for class_name, sv in zip(classes, sv_list):
+        class_path = f"{out_dir}/shap_summary_{target_col}_{class_name}.png"
+        shap_pkg.summary_plot(
+            sv,
+            X_display,
+            feature_names=feature_cols,
+            show=False,
+        )
+        plt.savefig(class_path, bbox_inches="tight", dpi=120)
+        plt.close()
+        logger.info(f"Saved SHAP summary plot for class '{class_name}': {class_path}")
+        if wandb_run is not None:
+            import wandb
+
+            wandb_run.log({f"shap/summary_{class_name}": wandb.Image(class_path)})
 
 
 # ---------------------------------------------------------------------------
@@ -649,6 +711,18 @@ def compute_shap(
             shap_mean_csv, len(mean_abs_shap)
         )
     )
+
+    if resolved_task == "classification" and classes:
+        plot_shap_summary_per_class(
+            sv_list,
+            X_regions,
+            feature_cols,
+            classes,
+            target_col,
+            FIG_DIR,
+            SHAP_DIR,
+            wandb_run=wandb_run,
+        )
 
     _plot_clustermap(mean_abs_shap, output_cols, FIG_DIR, wandb_run=wandb_run)
 

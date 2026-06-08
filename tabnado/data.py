@@ -345,6 +345,59 @@ def stratified_sample(df, target_cols: list[str], frac: float, seed: int = 42):
     return sampled
 
 
+VALID_CLASS_BALANCE_METHODS = {"none", "undersample", "oversample", "smote"}
+
+
+def balance_classes(
+    train_data: pd.DataFrame,
+    target_col: str,
+    method: str = "none",
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Resample ``train_data`` to balance classes in ``target_col``.
+
+    Mirrors the ``imblearn`` rebalancing step in
+    ``06-model-sem-vs-rs411-catboost.ipynb`` (which used
+    ``RandomUnderSampler``). Only applies to the training split — eval/test
+    are left at their natural class distribution.
+    """
+    method = (method or "none").lower()
+    if method not in VALID_CLASS_BALANCE_METHODS:
+        raise ValueError(
+            f"Unknown class_balance method '{method}'; expected one of "
+            f"{sorted(VALID_CLASS_BALANCE_METHODS)}."
+        )
+    if method == "none" or train_data.empty:
+        return train_data
+
+    from imblearn.over_sampling import SMOTE, RandomOverSampler
+    from imblearn.under_sampling import RandomUnderSampler
+
+    X = train_data.drop(columns=[target_col])
+    y = train_data[target_col].astype(str)
+
+    if method == "undersample":
+        sampler = RandomUnderSampler(random_state=seed)
+    elif method == "oversample":
+        sampler = RandomOverSampler(random_state=seed)
+    else:
+        smallest_class = int(y.value_counts().min())
+        sampler = SMOTE(random_state=seed, k_neighbors=max(1, min(5, smallest_class - 1)))
+
+    before = y.value_counts().to_dict()
+    X_res, y_res = sampler.fit_resample(X, y)
+    after = pd.Series(y_res).value_counts().to_dict()
+    logger.info(
+        f"Class balance ({method}): {len(train_data)} -> {len(X_res)} rows; "
+        f"class counts {before} -> {after}"
+    )
+
+    result = X_res.copy()
+    result[target_col] = y_res.to_numpy() if hasattr(y_res, "to_numpy") else y_res
+    result = result[train_data.columns]
+    return result.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+
+
 def plot_target_distributions(
     train_data: pd.DataFrame, target_cols: list[str], fig_dir: str
 ):
@@ -387,8 +440,8 @@ def load_or_build_datasets(
     dataset_train_path: str,
     dataset_eval_path: str,
     dataset_test_path: str,
-    eval_chr: str = "chr8",
-    test_chr: str = "chr9",
+    eval_chr: list[str] | str = "chr8",
+    test_chr: list[str] | str = "chr9",
     window_size: int = 3000,
     step_size: int = 100,
     tile_size: int = 100,
@@ -439,12 +492,13 @@ def load_or_build_datasets(
             uq_normalise=uq_normalise,
         )
 
-    logger.info(f"Splitting by chromosome: eval={eval_chr}, test={test_chr}")
-    train_data = signal_df[
-        ~signal_df.index.get_level_values("contig").isin([eval_chr, test_chr])
-    ]
-    eval_data = signal_df[signal_df.index.get_level_values("contig") == eval_chr]
-    test_data = signal_df[signal_df.index.get_level_values("contig") == test_chr]
+    eval_chrs = [eval_chr] if isinstance(eval_chr, str) else list(eval_chr)
+    test_chrs = [test_chr] if isinstance(test_chr, str) else list(test_chr)
+    logger.info(f"Splitting by chromosome: eval={eval_chrs or 'none'}, test={test_chrs}")
+    contigs = signal_df.index.get_level_values("contig")
+    train_data = signal_df[~contigs.isin(eval_chrs + test_chrs)]
+    eval_data = signal_df[contigs.isin(eval_chrs)]
+    test_data = signal_df[contigs.isin(test_chrs)]
     logger.info("Reshaping to region x (sample_tss_offset) format for features")
     train_data = reshape_signal_to_region_features(train_data)
     eval_data = reshape_signal_to_region_features(eval_data)
@@ -658,8 +712,8 @@ def load_parquet_data(
     TARGET: str,
     DATASET: str,
     DATA_DIR: str,
-    EVAL_CHR: str = "chr8",
-    TEST_CHR: str = "chr9",
+    EVAL_CHR: list[str] | str = "chr8",
+    TEST_CHR: list[str] | str = "chr9",
     minmax_scale: bool = True,
     clip_signal: bool = True,
     uq_normalise: bool = True,
@@ -701,11 +755,15 @@ def load_parquet_data(
     feature_cols = _infer_parquet_feature_cols(data, TARGET)
     data = _scale_parquet_features(data, feature_cols, minmax_scale=minmax_scale, clip_signal=clip_signal, uq_normalise=uq_normalise)
 
+    eval_chrs = [EVAL_CHR] if isinstance(EVAL_CHR, str) else list(EVAL_CHR)
+    test_chrs = [TEST_CHR] if isinstance(TEST_CHR, str) else list(TEST_CHR)
     contigs = _contigs_from_model_frame(data)
-    logger.info(f"Splitting parquet by chromosome: eval={EVAL_CHR}, test={TEST_CHR}")
-    train_mask = ~contigs.isin([EVAL_CHR, TEST_CHR])
-    eval_mask = contigs.eq(EVAL_CHR)
-    test_mask = contigs.eq(TEST_CHR)
+    logger.info(
+        f"Splitting parquet by chromosome: eval={eval_chrs or 'none'}, test={test_chrs}"
+    )
+    train_mask = ~contigs.isin(eval_chrs + test_chrs)
+    eval_mask = contigs.isin(eval_chrs)
+    test_mask = contigs.isin(test_chrs)
 
     train_data = data.loc[train_mask]
     eval_data = data.loc[eval_mask]
@@ -731,8 +789,8 @@ def load_data(
     DATASET: str = "data/dataset",
     GTF_FILE: Path = "data/gencode.vM25.annotation.gtf.gz",
     WINDOWS_BED: Path = "data/tss_windows.bed",
-    EVAL_CHR: str = "chr8",
-    TEST_CHR: str = "chr9",
+    EVAL_CHR: list[str] | str = "chr8",
+    TEST_CHR: list[str] | str = "chr9",
     FIG_DIR: str = "figures",
     DATA_DIR: str = "results/dataset",
     MIN_TARGET: int = 1,

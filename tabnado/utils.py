@@ -141,7 +141,7 @@ def figure_style():
         "ytick.labelsize": smaller,
         "legend.fontsize": smaller,
         "legend.title_fontsize": smaller,
-        "axes.grid": True,
+        "axes.grid": False,
         "axes.axisbelow": True,
         "grid.linestyle": "--",
         "grid.alpha": 0.5,

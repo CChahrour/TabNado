@@ -12,8 +12,8 @@ from sklearn.metrics import f1_score, make_scorer, mean_squared_error, r2_score
 from sklearn.model_selection import (
     GroupKFold,
     KFold,
-    RandomizedSearchCV,
     StratifiedKFold,
+    cross_val_score,
     train_test_split,
 )
 from sklearn.multioutput import MultiOutputRegressor
@@ -78,27 +78,71 @@ def _sweep_xgboost(
     **kwargs,
 ) -> dict:
     """
-    Randomised HP search for XGBoost using GroupKFold on chromosomes.
-    When LOGGING == 'wandb', each candidate run is logged to wandb after the
-    search completes.
+    Optuna hyperparameter search for XGBoost using cross-validation
+    (StratifiedKFold for classification, GroupKFold-by-chromosome for
+    regression). When LOGGING == 'wandb', the best trial is logged to wandb
+    purely for record-keeping — wandb does not drive the search.
 
     Returns best_hp dict and saves best_hyperparameters.json to RES_DIR.
     """
     import xgboost as xgb
 
+    optuna = _import_optuna()
     Path(RES_DIR).mkdir(parents=True, exist_ok=True)
-    use_wandb = wandb_cfg is not None
     task = resolve_task(TASK, train_data, target_cols)
+
+    def _suggest_xgboost_params(trial) -> dict[str, Any]:
+        return {
+            "max_depth": trial.suggest_categorical("max_depth", [3, 4, 5, 6, 8]),
+            "learning_rate": trial.suggest_float(
+                "learning_rate", 0.01, 0.2, log=True
+            ),
+            "n_estimators": trial.suggest_categorical(
+                "n_estimators", [300, 600, 1000]
+            ),
+            "min_child_weight": trial.suggest_categorical(
+                "min_child_weight", [1, 3, 5, 10]
+            ),
+            "subsample": trial.suggest_categorical("subsample", [0.6, 0.8, 1.0]),
+            "colsample_bytree": trial.suggest_categorical(
+                "colsample_bytree", [0.6, 0.8, 1.0]
+            ),
+            "reg_alpha": trial.suggest_categorical(
+                "reg_alpha", [0.0, 1e-3, 1e-2, 1e-1, 1.0]
+            ),
+            "reg_lambda": trial.suggest_categorical(
+                "reg_lambda", [0.1, 1.0, 5.0, 10.0]
+            ),
+        }
+
+    def _bail_out(best_hp: dict, reason: str) -> dict:
+        logger.warning(f"XGBoost HP sweep skipped: {reason} Using deterministic defaults.")
+        out_path = Path(RES_DIR) / "best_hyperparameters.json"
+        with open(out_path, "w") as f:
+            json.dump(json_safe(best_hp), f, indent=2)
+        logger.info(f"Saved best hyperparameters to {out_path}")
+        return best_hp
+
+    param_dist_for_defaults = {
+        "max_depth": [3, 4, 5, 6, 8],
+        "learning_rate": np.logspace(np.log10(0.01), np.log10(0.2), 10),
+        "n_estimators": [300, 600, 1000],
+        "min_child_weight": [1, 3, 5, 10],
+        "subsample": [0.6, 0.8, 1.0],
+        "colsample_bytree": [0.6, 0.8, 1.0],
+        "reg_alpha": [0.0, 1e-3, 1e-2, 1e-1, 1.0],
+        "reg_lambda": [0.1, 1.0, 5.0, 10.0],
+    }
 
     if task == "classification":
         encoded = encode_classification_target(train_data, target_cols)
-        objective = (
+        objective_name = (
             "binary:logistic"
             if encoded.problem_type == "binary"
             else "multi:softprob"
         )
         base_kwargs = {
-            "objective": objective,
+            "objective": objective_name,
             "tree_method": "hist",
             "max_bin": 256,
             "n_jobs": 1,
@@ -110,18 +154,6 @@ def _sweep_xgboost(
         }
         if encoded.problem_type == "multiclass":
             base_kwargs["num_class"] = len(encoded.classes)
-
-        estimator = xgb.XGBClassifier(**base_kwargs)
-        param_dist = {
-            "max_depth": [3, 4, 5, 6, 8],
-            "learning_rate": np.logspace(np.log10(0.01), np.log10(0.2), 10),
-            "n_estimators": [300, 600, 1000],
-            "min_child_weight": [1, 3, 5, 10],
-            "subsample": [0.6, 0.8, 1.0],
-            "colsample_bytree": [0.6, 0.8, 1.0],
-            "reg_alpha": [0.0, 1e-3, 1e-2, 1e-1, 1.0],
-            "reg_lambda": [0.1, 1.0, 5.0, 10.0],
-        }
 
         tune_data = _stratified_fraction_sample(
             train_data,
@@ -136,253 +168,135 @@ def _sweep_xgboost(
         )
 
         if len(X_tune) < 2 or n_sweeps <= 0:
-            best_hp = _default_best_hp(param_dist)
-            logger.warning(
-                "XGBoost classifier HP sweep skipped: using deterministic defaults."
-            )
-            out_path = Path(RES_DIR) / "best_hyperparameters.json"
-            with open(out_path, "w") as f:
-                json.dump(json_safe(best_hp), f, indent=2)
-            logger.info(f"Saved best hyperparameters to {out_path}")
-            return best_hp
+            return _bail_out(_default_best_hp(param_dist_for_defaults), "using deterministic defaults.")
 
         unique_classes, class_counts = np.unique(y_tune, return_counts=True)
         if len(unique_classes) < 2:
-            best_hp = _default_best_hp(param_dist)
-            logger.warning(
-                "XGBoost classifier HP sweep skipped: tuning sample contains "
-                "fewer than two classes. Using deterministic defaults."
+            return _bail_out(
+                _default_best_hp(param_dist_for_defaults),
+                "tuning sample contains fewer than two classes.",
             )
-            out_path = Path(RES_DIR) / "best_hyperparameters.json"
-            with open(out_path, "w") as f:
-                json.dump(json_safe(best_hp), f, indent=2)
-            logger.info(f"Saved best hyperparameters to {out_path}")
-            return best_hp
 
         n_splits = min(3, int(class_counts.min()))
-        if n_splits >= 2:
-            cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
-            fit_kwargs = {}
-            cv_desc = f"{n_splits}-fold StratifiedKFold"
-        else:
-            best_hp = _default_best_hp(param_dist)
-            logger.warning(
-                "XGBoost classifier HP sweep skipped: every class needs at least "
-                "two samples for stratified CV. Using deterministic defaults."
+        if n_splits < 2:
+            return _bail_out(
+                _default_best_hp(param_dist_for_defaults),
+                "every class needs at least two samples for stratified CV.",
             )
-            out_path = Path(RES_DIR) / "best_hyperparameters.json"
-            with open(out_path, "w") as f:
-                json.dump(json_safe(best_hp), f, indent=2)
-            logger.info(f"Saved best hyperparameters to {out_path}")
-            return best_hp
+        cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+        cv_desc = f"{n_splits}-fold StratifiedKFold"
 
         if len(X_tune) < max(10, n_splits * 4):
-            best_hp = _default_best_hp(param_dist)
-            logger.warning(
-                "XGBoost classifier HP sweep skipped: {} samples is too few for "
-                "stable {}. Using deterministic defaults.".format(
-                    len(X_tune), cv_desc
-                )
+            return _bail_out(
+                _default_best_hp(param_dist_for_defaults),
+                f"{len(X_tune)} samples is too few for stable {cv_desc}.",
             )
-            out_path = Path(RES_DIR) / "best_hyperparameters.json"
-            with open(out_path, "w") as f:
-                json.dump(json_safe(best_hp), f, indent=2)
-            logger.info(f"Saved best hyperparameters to {out_path}")
-            return best_hp
 
-        search = RandomizedSearchCV(
-            estimator=estimator,
-            param_distributions=param_dist,
-            n_iter=n_sweeps,
-            scoring=make_scorer(f1_score, average="macro"),
-            cv=cv,
-            n_jobs=n_jobs,
-            verbose=1,
-            random_state=seed,
-            refit=False,
-        )
+        scoring = make_scorer(f1_score, average="macro")
+        metric_name = "macro-F1"
+
+        def objective(trial) -> float:
+            params = _suggest_xgboost_params(trial)
+            estimator = xgb.XGBClassifier(**base_kwargs, **params)
+            scores = cross_val_score(
+                estimator, X_tune, y_tune, scoring=scoring, cv=cv, n_jobs=n_jobs
+            )
+            return float(np.mean(scores))
+
         logger.info(
-            f"XGBoost classifier HP sweep: {n_sweeps} iterations on "
+            f"XGBoost classifier Optuna sweep: {n_sweeps} trials on "
             f"{len(X_tune):,} regions ({sweep_fraction:.0%} of train), {cv_desc}"
         )
-        search.fit(X_tune, y_tune, **fit_kwargs)
-        best_hp = {
-            k.replace("estimator__", ""): v for k, v in search.best_params_.items()
-        }
-        if np.isnan(search.best_score_):
-            logger.warning("XGBoost classifier sweep scores are NaN; using defaults.")
-            best_hp = _default_best_hp(param_dist)
+
+    else:
+        tune_data = train_data.sample(frac=min(sweep_fraction, 1.0), random_state=seed)
+        X_tune = tune_data[feature_cols].values
+        y_tune = tune_data[target_cols].values
+        if len(target_cols) == 1:
+            y_tune = y_tune.ravel()
+
+        if len(X_tune) < 2:
+            return _bail_out(
+                _default_best_hp(param_dist_for_defaults),
+                f"need at least 2 samples, got {len(X_tune)}.",
+            )
+
+        if hasattr(tune_data.index, "get_level_values"):
+            contigs = tune_data.index.get_level_values("contig").astype(str)
         else:
-            logger.info(
-                f"Best sweep macro-F1={search.best_score_:.4f}  params={best_hp}"
+            contigs = tune_data.index.astype(str).str.split(":").str[0]
+        groups = contigs.values
+
+        n_unique_groups = len(np.unique(groups))
+        if n_unique_groups >= 2:
+            n_splits = min(3, n_unique_groups)
+            cv = GroupKFold(n_splits=n_splits)
+            fit_params = {"groups": groups}
+            cv_desc = f"{n_splits}-fold GroupKFold by chromosome"
+        else:
+            n_splits = min(3, len(X_tune))
+            cv = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+            fit_params = {}
+            cv_desc = f"{n_splits}-fold KFold (single chromosome group in sweep subset)"
+
+        min_cv_samples = max(10, n_splits * 4)
+        if len(X_tune) < min_cv_samples:
+            return _bail_out(
+                _default_best_hp(param_dist_for_defaults),
+                f"{len(X_tune)} samples is too few for stable {cv_desc}.",
             )
 
-        out_path = Path(RES_DIR) / "best_hyperparameters.json"
-        with open(out_path, "w") as f:
-            json.dump(json_safe(best_hp), f, indent=2)
-        logger.info(f"Saved best hyperparameters to {out_path}")
-        return best_hp
-
-    base = xgb.XGBRegressor(
-        objective="reg:squarederror",
-        tree_method="hist",
-        max_bin=256,
-        n_jobs=1,
-        random_state=seed,
-        verbosity=0,
-    )
-
-    if len(target_cols) == 1:
-        estimator = base
-        param_dist = {
-            "max_depth": [3, 4, 5, 6, 8],
-            "learning_rate": np.logspace(np.log10(0.01), np.log10(0.2), 10),
-            "n_estimators": [300, 600, 1000],
-            "min_child_weight": [1, 3, 5, 10],
-            "subsample": [0.6, 0.8, 1.0],
-            "colsample_bytree": [0.6, 0.8, 1.0],
-            "reg_alpha": [0.0, 1e-3, 1e-2, 1e-1, 1.0],
-            "reg_lambda": [0.1, 1.0, 5.0, 10.0],
+        scoring = make_scorer(r2_score, greater_is_better=True, multioutput="uniform_average")
+        metric_name = "R2"
+        base_kwargs = {
+            "objective": "reg:squarederror",
+            "tree_method": "hist",
+            "max_bin": 256,
+            "n_jobs": 1,
+            "random_state": seed,
+            "verbosity": 0,
         }
-    else:
-        estimator = MultiOutputRegressor(base, n_jobs=1)
-        param_dist = {
-            "estimator__max_depth": [3, 4, 5, 6, 8],
-            "estimator__learning_rate": np.logspace(np.log10(0.01), np.log10(0.2), 10),
-            "estimator__n_estimators": [300, 600, 1000],
-            "estimator__min_child_weight": [1, 3, 5, 10],
-            "estimator__subsample": [0.6, 0.8, 1.0],
-            "estimator__colsample_bytree": [0.6, 0.8, 1.0],
-            "estimator__reg_alpha": [0.0, 1e-3, 1e-2, 1e-1, 1.0],
-            "estimator__reg_lambda": [0.1, 1.0, 5.0, 10.0],
-        }
+        multioutput = len(target_cols) > 1
 
-    tune_data = train_data.sample(frac=min(sweep_fraction, 1.0), random_state=seed)
-    X_tune = tune_data[feature_cols].values
-    y_tune = tune_data[target_cols].values
-    if len(target_cols) == 1:
-        y_tune = y_tune.ravel()
-
-    if len(X_tune) < 2:
-        best_hp = _default_best_hp(param_dist)
-        logger.warning(
-            "XGBoost HP sweep skipped: need at least 2 samples, got {}. "
-            "Using deterministic default hyperparameters.".format(len(X_tune))
-        )
-        out_path = Path(RES_DIR) / "best_hyperparameters.json"
-        with open(out_path, "w") as f:
-            json.dump(best_hp, f, indent=2)
-        logger.info(f"Saved best hyperparameters to {out_path}")
-        return best_hp
-
-    if hasattr(tune_data.index, "get_level_values"):
-        contigs = tune_data.index.get_level_values("contig").astype(str)
-    else:
-        contigs = tune_data.index.astype(str).str.split(":").str[0]
-    groups = contigs.values
-
-    n_unique_groups = len(np.unique(groups))
-    if n_unique_groups >= 2:
-        n_splits = min(3, n_unique_groups)
-        cv = GroupKFold(n_splits=n_splits)
-        fit_kwargs = {"groups": groups}
-        cv_desc = f"{n_splits}-fold GroupKFold by chromosome"
-    else:
-        n_splits = min(3, len(X_tune))
-        cv = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
-        fit_kwargs = {}
-        cv_desc = f"{n_splits}-fold KFold (single chromosome group in sweep subset)"
-
-    min_cv_samples = max(10, n_splits * 4)
-    if len(X_tune) < min_cv_samples:
-        best_hp = _default_best_hp(param_dist)
-        logger.warning(
-            "XGBoost HP sweep skipped: {} samples is too few for stable {}. "
-            "Using deterministic default hyperparameters.".format(
-                len(X_tune), cv_desc
+        def objective(trial) -> float:
+            params = _suggest_xgboost_params(trial)
+            base = xgb.XGBRegressor(**base_kwargs, **params)
+            estimator = MultiOutputRegressor(base, n_jobs=1) if multioutput else base
+            scores = cross_val_score(
+                estimator,
+                X_tune,
+                y_tune,
+                scoring=scoring,
+                cv=cv,
+                n_jobs=n_jobs,
+                params=fit_params,
             )
+            return float(np.mean(scores))
+
+        logger.info(
+            f"XGBoost Optuna sweep: {n_sweeps} trials on {len(X_tune):,} regions "
+            f"({sweep_fraction:.0%} of train), {cv_desc}"
         )
-        out_path = Path(RES_DIR) / "best_hyperparameters.json"
-        with open(out_path, "w") as f:
-            json.dump(best_hp, f, indent=2)
-        logger.info(f"Saved best hyperparameters to {out_path}")
-        return best_hp
 
-    r2_macro = make_scorer(
-        r2_score,
-        greater_is_better=True,
-        multioutput="uniform_average",
-    )
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    sampler = optuna.samplers.TPESampler(seed=seed)
+    study = optuna.create_study(direction="maximize", sampler=sampler)
+    study.optimize(objective, n_trials=n_sweeps, n_jobs=1)
 
-    search = RandomizedSearchCV(
-        estimator=estimator,
-        param_distributions=param_dist,
-        n_iter=n_sweeps,
-        scoring=r2_macro,
-        cv=cv,
-        n_jobs=n_jobs,
-        verbose=1,
-        random_state=seed,
-        refit=False,
-    )
-
-    logger.info(
-        f"XGBoost HP sweep: {n_sweeps} iterations on {len(X_tune):,} regions "
-        f"({sweep_fraction:.0%} of train), {cv_desc}"
-    )
-    search.fit(X_tune, y_tune, **fit_kwargs)
-
-    best_score = search.best_score_
-    raw_params = search.best_params_
-    best_hp = {k.replace("estimator__", ""): v for k, v in raw_params.items()}
-    if np.isnan(best_score):
-        logger.warning(
-            "XGBoost sweep: all CV scores are NaN — check that sweep_fraction produces "
-            "enough samples per fold. Falling back to default hyperparameters."
-        )
-        best_hp = _default_best_hp(param_dist)
+    _save_trials(study, RES_DIR, backend="xgboost")
+    if study.best_value is None or np.isnan(study.best_value):
+        best_hp = _default_best_hp(param_dist_for_defaults)
+        logger.warning("XGBoost Optuna sweep scores are NaN; using defaults.")
     else:
-        logger.info(f"Best sweep R²={best_score:.4f}  params={best_hp}")
-
-    if use_wandb:
-        import wandb
-
-        sweep_ts = time.strftime("%Y-%m-%d_%H%M%S")
-        results = search.cv_results_
-        for i in range(len(results["params"])):
-            hp = {
-                k.replace("estimator__", ""): v for k, v in results["params"][i].items()
-            }
-            with wandb_cfg.init_run(
-                name=f"{wandb_cfg.model_name}_sweep_{sweep_ts}_{i}",
-                group="sweep",
-                config=hp,
-                reinit="finish_previous",
-            ):
-                score = float(results["mean_test_score"][i])
-                if not np.isnan(score):
-                    wandb.log(
-                        {
-                            "val_r2": score,
-                            "val_r2_std": float(results["std_test_score"][i]),
-                            "fit_time": float(results["mean_fit_time"][i]),
-                        }
-                    )
+        best_hp = dict(study.best_params)
+        logger.info(
+            f"Best XGBoost Optuna {metric_name}={study.best_value:.4f}  params={best_hp}"
+        )
+        _log_optuna_best_to_wandb(wandb_cfg, "xgboost", study, best_hp, metric_name)
 
     out_path = Path(RES_DIR) / "best_hyperparameters.json"
     with open(out_path, "w") as f:
-        json.dump(
-            best_hp,
-            f,
-            indent=2,
-            default=lambda x: (
-                float(x)
-                if isinstance(x, np.floating)
-                else int(x)
-                if isinstance(x, np.integer)
-                else x
-            ),
-        )
+        json.dump(json_safe(best_hp), f, indent=2)
     logger.info(f"Saved best hyperparameters to {out_path}")
 
     return best_hp
@@ -436,7 +350,7 @@ def _save_best_hp(best_hp: dict[str, Any], RES_DIR: str) -> None:
     logger.info(f"Saved best hyperparameters to {out_path}")
 
 
-def _save_trials(study, RES_DIR: str) -> None:
+def _save_trials(study, RES_DIR: str, backend: str = "catboost") -> None:
     records = []
     for trial in study.trials:
         record = {
@@ -450,9 +364,30 @@ def _save_trials(study, RES_DIR: str) -> None:
     if not records:
         return
 
-    out_path = Path(RES_DIR) / "catboost_optuna_trials.csv"
+    out_path = Path(RES_DIR) / f"{backend}_optuna_trials.csv"
     pd.DataFrame.from_records(records).to_csv(out_path, index=False)
-    logger.info(f"Saved CatBoost Optuna trial table to {out_path}")
+    logger.info(f"Saved {backend.title()} Optuna trial table to {out_path}")
+
+
+def _log_optuna_best_to_wandb(
+    wandb_cfg,
+    backend: str,
+    study,
+    best_hp: dict[str, Any],
+    metric_name: str,
+) -> None:
+    """Log the best Optuna trial result to wandb purely for record-keeping."""
+    if wandb_cfg is None:
+        return
+
+    run = wandb_cfg.init_run(
+        name=f"{wandb_cfg.model_name}_{backend}_optuna_sweep",
+        group="sweep",
+        config={"n_trials": len(study.trials), "metric": metric_name, **best_hp},
+        reinit="finish_previous",
+    )
+    run.log({f"best_{metric_name}": float(study.best_value)})
+    run.finish()
 
 
 def _fraction_sample(
@@ -492,7 +427,16 @@ def _split_tune_data(
     return train_part, valid_part
 
 
-def _suggest_catboost_params(trial) -> dict[str, Any]:
+def _suggest_catboost_params(trial, search_space: str = "extended") -> dict[str, Any]:
+    """Suggest CatBoost hyperparameters for an Optuna trial.
+
+    ``search_space="notebook"`` mirrors the narrower 4-parameter search used in
+    ``06-model-sem-vs-rs411-catboost.ipynb`` (colsample_bylevel, depth,
+    boosting_type, bootstrap_type [+ conditional bagging_temperature/subsample]),
+    leaving learning_rate/iterations/l2_leaf_reg/random_strength at their
+    CatBoost defaults. ``search_space="extended"`` (default) tunes those four
+    extra parameters as well.
+    """
     params: dict[str, Any] = {
         "colsample_bylevel": trial.suggest_float("colsample_bylevel", 0.01, 0.1),
         "depth": trial.suggest_int("depth", 1, 12),
@@ -504,11 +448,17 @@ def _suggest_catboost_params(trial) -> dict[str, Any]:
             "bootstrap_type",
             ["Bayesian", "Bernoulli", "MVS"],
         ),
-        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-        "iterations": trial.suggest_categorical("iterations", [300, 600, 1000]),
-        "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1.0, 10.0, log=True),
-        "random_strength": trial.suggest_float("random_strength", 0.0, 1.0),
     }
+
+    if search_space == "extended":
+        params["learning_rate"] = trial.suggest_float(
+            "learning_rate", 0.01, 0.2, log=True
+        )
+        params["iterations"] = trial.suggest_categorical(
+            "iterations", [300, 600, 1000]
+        )
+        params["l2_leaf_reg"] = trial.suggest_float("l2_leaf_reg", 1.0, 10.0, log=True)
+        params["random_strength"] = trial.suggest_float("random_strength", 0.0, 1.0)
 
     if params["bootstrap_type"] == "Bayesian":
         params["bagging_temperature"] = trial.suggest_float(
@@ -575,6 +525,7 @@ def _sweep_catboost(
     TASK: str = "regression",
     early_stopping_rounds: int = 10,
     eval_data: pd.DataFrame | None = None,
+    catboost_search_space: str = "extended",
     **kwargs,
 ) -> dict[str, Any]:
     """Optuna hyperparameter search for CatBoost."""
@@ -632,7 +583,7 @@ def _sweep_catboost(
         metric_name = "weighted-F1"
 
         def objective(trial) -> float:
-            params = _suggest_catboost_params(trial)
+            params = _suggest_catboost_params(trial, catboost_search_space)
             estimator = CatBoostClassifier(
                 **common_params,
                 **params,
@@ -678,7 +629,7 @@ def _sweep_catboost(
         metric_name = "R2"
 
         def objective(trial) -> float:
-            params = _suggest_catboost_params(trial)
+            params = _suggest_catboost_params(trial, catboost_search_space)
             estimators = []
             for col in target_cols:
                 estimator = CatBoostRegressor(
@@ -712,7 +663,7 @@ def _sweep_catboost(
     )
     study.optimize(objective, n_trials=n_sweeps, n_jobs=max(1, int(n_jobs)))
 
-    _save_trials(study, RES_DIR)
+    _save_trials(study, RES_DIR, backend="catboost")
     if study.best_value is None or np.isnan(study.best_value):
         best_hp = _default_catboost_best_hp()
         logger.warning("CatBoost Optuna sweep scores are NaN; using defaults.")
@@ -725,28 +676,15 @@ def _sweep_catboost(
                 best_hp,
             )
         )
+        _log_optuna_best_to_wandb(wandb_cfg, "catboost", study, best_hp, metric_name)
 
     _save_best_hp(best_hp, RES_DIR)
-
-    if wandb_cfg is not None:
-        run = wandb_cfg.init_run(
-            name=f"{wandb_cfg.model_name}_catboost_optuna_sweep",
-            group="sweep",
-            config={"n_trials": n_sweeps, "metric": metric_name, **best_hp},
-            reinit="finish_previous",
-        )
-        run.log({f"best_{metric_name}": float(study.best_value)})
-        run.finish()
-
     return best_hp
 
 
 # ---------------------------------------------------------------------------
 # GANDALF (PyTorch Tabular, wandb-driven sweeps)
 # ---------------------------------------------------------------------------
-
-_LOCAL_SWEEP_BEST_HP_CACHE: dict[str, dict] = {}
-
 
 def _center_window_columns(columns: list[str]) -> list[str]:
     """Return only TSS-centered columns (suffix `_0`)."""
@@ -766,27 +704,6 @@ def _make_data_config(feature_cols, target_cols):
         pin_memory=False,
         dataloader_kwargs={"persistent_workers": False},
     )
-
-
-def _sample_from_sweep_params(param_spec: dict) -> dict:
-    sampled = {}
-    for key, spec in param_spec.items():
-        if "values" in spec:
-            sampled[key] = spec["values"][np.random.randint(0, len(spec["values"]))]
-            continue
-
-        distribution = spec.get("distribution")
-        if distribution == "uniform":
-            sampled[key] = float(np.random.uniform(spec["min"], spec["max"]))
-        elif distribution == "log_uniform_values":
-            low = np.log(spec["min"])
-            high = np.log(spec["max"])
-            sampled[key] = float(np.exp(np.random.uniform(low, high)))
-        else:
-            raise ValueError(
-                f"Unsupported sweep distribution for {key}: {distribution}"
-            )
-    return sampled
 
 
 def _gandalf_sweep_train(
@@ -839,9 +756,9 @@ def _gandalf_sweep_train(
     run_dir = os.path.join(sweep_root, run_name)
     os.makedirs(run_dir, exist_ok=True)
 
+    if hp_config is None:
+        raise ValueError("_gandalf_sweep_train requires hp_config (sampled by Optuna)")
     config_dict = hp_config
-    if config_dict is None and not use_wandb:
-        config_dict = _sample_from_sweep_params(create_sweep_dict()["parameters"])
 
     sweep_target_cols = _center_window_columns(target_cols)
     selected_cols = feature_cols + sweep_target_cols
@@ -988,13 +905,7 @@ def _gandalf_sweep_train(
         with open(os.path.join(run_dir, "metrics.json"), "w") as f:
             json.dump(test_metrics, f, indent=4)
         with open(os.path.join(run_dir, "hyperparameters.json"), "w") as f:
-            hp_keys_to_save = list(create_sweep_dict()["parameters"].keys())
-            hp_dict = {
-                k: getattr(config_obj, k)
-                for k in hp_keys_to_save
-                if hasattr(config_obj, k)
-            }
-            json.dump(hp_dict, f, indent=4)
+            json.dump(vars(config_obj), f, indent=4)
 
         if use_wandb:
             wandb.log(test_metrics)
@@ -1008,225 +919,44 @@ def _gandalf_sweep_train(
     seed_everything(42)
     logger.info(f"======== Fitting {run_name} ========")
 
+    config_obj = SimpleNamespace(**config_dict)
     if not use_wandb:
-        assert config_dict is not None
-        return _fit_and_eval(SimpleNamespace(**config_dict))
+        return _fit_and_eval(config_obj)
 
     with wandb_cfg.init_run(
         name=run_name,
         group="sweep",
+        config=config_dict,
         reinit="finish_previous",
         dir_override=run_dir,
-    ) as run:
-        return _fit_and_eval(run.config)
+    ):
+        return _fit_and_eval(config_obj)
 
 
-def create_sweep_dict(
-    MODEL_NAME: str = "GANDALF_Sweep",
-    PROJECT: str = "PROJECT_NAME",
-    TASK: str = "regression",
-):
-    metric = (
-        {"name": "valid_accuracy", "goal": "maximize"}
-        if str(TASK).lower() == "classification"
-        else {"name": "valid_r2_score", "goal": "maximize"}
-    )
+def _suggest_gandalf_params(trial) -> dict[str, Any]:
     return {
-        "name": MODEL_NAME,
-        "method": "bayes",
-        "metric": metric,
-        "parameters": {
-            "learning_rate": {
-                "distribution": "log_uniform_values",
-                "min": 1e-3,
-                "max": 3e-2,
-            },
-            "weight_decay": {
-                "distribution": "log_uniform_values",
-                "min": 5e-4,
-                "max": 5e-3,
-            },
-            "gradient_clip_val": {"distribution": "uniform", "min": 0.5, "max": 2.0},
-            "embedding_dropout": {"distribution": "uniform", "min": 0.0, "max": 0.02},
-            "gflu_dropout": {"distribution": "uniform", "min": 0.0, "max": 0.05},
-            "gflu_feature_init_sparsity": {
-                "distribution": "uniform",
-                "min": 0.1,
-                "max": 0.4,
-            },
-            "gflu_stages": {"values": [6, 8, 10, 12]},
-        },
+        "learning_rate": trial.suggest_float("learning_rate", 1e-3, 3e-2, log=True),
+        "weight_decay": trial.suggest_float("weight_decay", 5e-4, 5e-3, log=True),
+        "gradient_clip_val": trial.suggest_float("gradient_clip_val", 0.5, 2.0),
+        "embedding_dropout": trial.suggest_float("embedding_dropout", 0.0, 0.02),
+        "gflu_dropout": trial.suggest_float("gflu_dropout", 0.0, 0.05),
+        "gflu_feature_init_sparsity": trial.suggest_float(
+            "gflu_feature_init_sparsity", 0.1, 0.4
+        ),
+        "gflu_stages": trial.suggest_categorical("gflu_stages", [6, 8, 10, 12]),
     }
 
 
-def _gandalf_start_sweep_and_run(
-    train_data,
-    eval_data,
-    test_data,
-    feature_cols,
-    target_cols,
-    count,
-    RES_DIR: str = "results",
-    SWEEP_FRACTION: float = 0.1,
-    LOGGING: str = "none",
-    LOGGING_DIR: str | None = None,
-    wandb_cfg=None,
-    TASK: str = "regression",
-) -> str:
-    import wandb
-
-    task = resolve_task(TASK, train_data, target_cols)
-    use_wandb = wandb_cfg is not None
-    logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
-    if LOGGING == "tensorboard":
-        os.makedirs(logging_dir, exist_ok=True)
-
-    sweep_dir = os.path.join(RES_DIR, "sweep")
-    os.makedirs(sweep_dir, exist_ok=True)
-
-    if not use_wandb:
-        sweep_id = f"local-{time.strftime('%Y-%m-%d_%H%M')}"
-        local_sweep_dir = os.path.join(sweep_dir, sweep_id)
-        os.makedirs(local_sweep_dir, exist_ok=True)
-
-        logger.info(f"Running local sweep: {sweep_id}")
-        best_hp = None
-        best_score = -np.inf
-        sweep_params = create_sweep_dict(TASK=task)["parameters"]
-        score_key = "test_macro_f1" if task == "classification" else "test_r2_macro"
-
-        for _ in range(count):
-            hp = _sample_from_sweep_params(sweep_params)
-            metrics = _gandalf_sweep_train(
-                train_data,
-                eval_data,
-                test_data,
-                feature_cols,
-                target_cols,
-                RES_DIR=RES_DIR,
-                SWEEP_FRACTION=SWEEP_FRACTION,
-                LOGGING_DIR=logging_dir,
-                SWEEP_ID=sweep_id,
-                hp_config=hp,
-                LOGGING=LOGGING,
-                wandb_cfg=wandb_cfg,
-                TASK=task,
-            )
-            if metrics is not None and metrics[score_key] > best_score:
-                best_score = metrics[score_key]
-                best_hp = hp
-
-        if best_hp is None:
-            raise RuntimeError("Local sweep produced no valid runs")
-
-        _LOCAL_SWEEP_BEST_HP_CACHE[sweep_id] = best_hp
-        return sweep_id
-
-    sweep_id = wandb.sweep(
-        sweep=create_sweep_dict(TASK=task),
-        entity=wandb_cfg.entity,
-        project=wandb_cfg.project,
-    )
-    logger.info(f"Created sweep: {sweep_id}")
-    wandb.agent(
-        sweep_id,
-        function=lambda: _gandalf_sweep_train(
-            train_data,
-            eval_data,
-            test_data,
-            feature_cols,
-            target_cols,
-            RES_DIR=RES_DIR,
-            SWEEP_FRACTION=SWEEP_FRACTION,
-            LOGGING_DIR=logging_dir,
-            SWEEP_ID=sweep_id,
-            LOGGING=LOGGING,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        ),
-        count=count,
-    )
-    return sweep_id
-
-
-def _gandalf_get_best_hp_from_sweep(
-    sweep_id: str,
-    RES_DIR: str = "results",
-    wandb_cfg=None,
-) -> dict:
-    """Fetch the hyperparameters of the best-performing run in a sweep."""
-    import wandb
-
-    use_wandb = wandb_cfg is not None
-    if not use_wandb:
-        cached = _LOCAL_SWEEP_BEST_HP_CACHE.get(sweep_id)
-        if cached is not None:
-            return cached
-
-        root_hp_path = os.path.join(RES_DIR, "best_hyperparameters.json")
-        if os.path.exists(root_hp_path):
-            with open(root_hp_path) as f:
-                return json.load(f)
-
-        raise FileNotFoundError(
-            f"No local best_hyperparameters found in cache and no file at {root_hp_path}"
-        )
-
-    hp_keys = list(create_sweep_dict()["parameters"].keys())
-
-    # Try wandb API first; fall back to local sweep run directories.
-    try:
-        api = wandb.Api()
-        entity = wandb_cfg.entity
-        sweep_path = (
-            f"{entity}/{wandb_cfg.project}/{sweep_id}"
-            if entity
-            else f"{wandb_cfg.project}/{sweep_id}"
-        )
-        sweep = api.sweep(sweep_path)
-        best_run = sweep.best_run()
-        if best_run is not None:
-            hp = {k: best_run.config[k] for k in hp_keys if k in best_run.config}
-            if hp:
-                return hp
-    except Exception as e:
-        logger.warning(
-            f"wandb API unavailable ({e}), falling back to local sweep files"
-        )
-
-    # Fall back: scan local run directories under RES_DIR/sweep/sweep_id/
-    sweep_dir = os.path.join(RES_DIR, "sweep", sweep_id)
-    if not os.path.isdir(sweep_dir):
-        raise FileNotFoundError(f"No local sweep directory found at {sweep_dir}")
-
-    best_hp = None
-    best_score = -np.inf
-    for run_dir in os.scandir(sweep_dir):
-        if not run_dir.is_dir():
-            continue
-        metrics_path = os.path.join(run_dir.path, "metrics.json")
-        hp_path = os.path.join(run_dir.path, "hyperparameters.json")
-        if not os.path.exists(metrics_path) or not os.path.exists(hp_path):
-            continue
-        with open(metrics_path) as f:
-            metrics = json.load(f)
-        score = metrics.get(
-            "test_macro_f1",
-            metrics.get("test_r2_macro", -np.inf),
-        )
-        if score > best_score:
-            with open(hp_path) as f:
-                all_hp = json.load(f)
-            hp = {k: all_hp[k] for k in hp_keys if k in all_hp}
-            if hp:
-                best_score = score
-                best_hp = hp
-
-    if best_hp is None:
-        raise RuntimeError(f"No valid local sweep runs found in {sweep_dir}")
-
-    logger.info(f"Best local sweep run: test_r2_macro={best_score:.4f}  hp={best_hp}")
-    return best_hp
+def _default_gandalf_best_hp() -> dict[str, Any]:
+    return {
+        "learning_rate": 5e-3,
+        "weight_decay": 1e-3,
+        "gradient_clip_val": 1.0,
+        "embedding_dropout": 0.01,
+        "gflu_dropout": 0.02,
+        "gflu_feature_init_sparsity": 0.2,
+        "gflu_stages": 8,
+    }
 
 
 def _sweep_gandalf(
@@ -1236,6 +966,7 @@ def _sweep_gandalf(
     n_sweeps: int = 20,
     sweep_fraction: float = 0.1,
     RES_DIR: str = "results",
+    seed: int = 42,
     wandb_cfg=None,
     TASK: str = "regression",
     eval_data: pd.DataFrame | None = None,
@@ -1244,35 +975,71 @@ def _sweep_gandalf(
     LOGGING_DIR: str | None = None,
     **kwargs,
 ) -> dict:
-    """Run a GANDALF hyperparameter sweep (wandb agent or local loop) and
-    persist the best hyperparameters to ``RES_DIR/best_hyperparameters.json``."""
-    task = resolve_task(TASK, train_data, target_cols)
+    """Optuna hyperparameter search for GANDALF.
 
-    sweep_id = _gandalf_start_sweep_and_run(
-        train_data,
-        eval_data,
-        test_data,
-        feature_cols,
-        target_cols,
-        count=n_sweeps,
-        RES_DIR=RES_DIR,
-        SWEEP_FRACTION=sweep_fraction,
-        LOGGING=LOGGING,
-        LOGGING_DIR=LOGGING_DIR,
-        wandb_cfg=wandb_cfg,
-        TASK=task,
-    )
-    best_hp = _gandalf_get_best_hp_from_sweep(
-        sweep_id,
-        RES_DIR=RES_DIR,
-        wandb_cfg=wandb_cfg,
-    )
-    logger.info(f"Best hyperparameters: {best_hp}")
-    hp_path = Path(RES_DIR) / "best_hyperparameters.json"
-    with open(hp_path, "w") as f:
-        json.dump(best_hp, f, indent=4)
-    logger.info(f"Saved best hyperparameters to {hp_path}")
+    Each trial fits a GANDALF model on a sampled fraction of the training set,
+    validates on ``eval_data``, and is scored on ``test_data`` (macro-F1 for
+    classification, macro-R2 for regression). When LOGGING == 'wandb', each
+    trial run is logged to wandb purely for record-keeping — wandb does not
+    drive the search.
+    """
+    optuna = _import_optuna()
+    Path(RES_DIR).mkdir(parents=True, exist_ok=True)
+    task = resolve_task(TASK, train_data, target_cols)
+    score_key = "test_macro_f1" if task == "classification" else "test_r2_macro"
+
+    sweep_id = f"optuna-{time.strftime('%Y-%m-%d_%H%M%S')}"
+    logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
+    if LOGGING == "tensorboard":
+        os.makedirs(logging_dir, exist_ok=True)
+
+    if n_sweeps <= 0:
+        best_hp = _default_gandalf_best_hp()
+        logger.warning("GANDALF Optuna sweep skipped: using deterministic defaults.")
+        _save_best_hp(best_hp, RES_DIR)
+        return best_hp
+
+    def objective(trial) -> float:
+        hp = _suggest_gandalf_params(trial)
+        metrics = _gandalf_sweep_train(
+            train_data,
+            eval_data,
+            test_data,
+            feature_cols,
+            target_cols,
+            RES_DIR=RES_DIR,
+            SWEEP_FRACTION=sweep_fraction,
+            LOGGING_DIR=logging_dir,
+            SWEEP_ID=sweep_id,
+            hp_config=hp,
+            LOGGING=LOGGING,
+            wandb_cfg=wandb_cfg,
+            TASK=task,
+        )
+        if metrics is None:
+            return float("nan")
+        return float(metrics[score_key])
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    sampler = optuna.samplers.TPESampler(seed=seed)
+    study = optuna.create_study(direction="maximize", sampler=sampler)
+    logger.info(f"GANDALF Optuna sweep: {n_sweeps} trials, metric={score_key}")
+    study.optimize(objective, n_trials=n_sweeps)
+
+    _save_trials(study, RES_DIR, backend="gandalf")
+    if study.best_value is None or np.isnan(study.best_value):
+        best_hp = _default_gandalf_best_hp()
+        logger.warning("GANDALF Optuna sweep scores are NaN; using defaults.")
+    else:
+        best_hp = dict(study.best_params)
+        logger.info(
+            f"Best GANDALF Optuna {score_key}={study.best_value:.4f}  params={best_hp}"
+        )
+        _log_optuna_best_to_wandb(wandb_cfg, "gandalf", study, best_hp, score_key)
+
+    _save_best_hp(best_hp, RES_DIR)
     return best_hp
+
 
 
 # ---------------------------------------------------------------------------
