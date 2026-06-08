@@ -15,6 +15,7 @@ windows_bed: data/tss_windows.bed
 n_sweeps: 10
 catboost_search_space: extended  # or "notebook" for the narrower 4-param search
 class_balance: none  # "none", "undersample", "oversample", or "smote" (classification only)
+early_stopping: 10  # early_stopping_rounds passed to sweep AND final-model training (CatBoost/XGBoost)
 logging: wandb
 min_target: 1
 min_features: 10

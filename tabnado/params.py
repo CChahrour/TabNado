@@ -59,6 +59,7 @@ class PipelineParams:
     ASSAY_PREFIXES: list = field(default_factory=list)
     CATBOOST_SEARCH_SPACE: str = "extended"
     CLASS_BALANCE: str = "none"
+    EARLY_STOPPING_ROUNDS: int = 10
 
     @classmethod
     def from_yaml(cls, params_path: Path | str) -> "PipelineParams":
@@ -131,6 +132,7 @@ class PipelineParams:
             ASSAY_PREFIXES=p.get("prefixes", []),
             CATBOOST_SEARCH_SPACE=catboost_search_space,
             CLASS_BALANCE=class_balance,
+            EARLY_STOPPING_ROUNDS=int(p.get("early_stopping", 10)),
         )
 
     @staticmethod

@@ -286,6 +286,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         wandb_cfg=wandb_cfg,
         TASK=task,
         catboost_search_space=params.CATBOOST_SEARCH_SPACE,
+        early_stopping_rounds=params.EARLY_STOPPING_ROUNDS,
     )
     logger.info(
         f"[stage:sweep] END {model_type} sweep in {{:.2f}}s".format(
@@ -307,6 +308,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         LOGGING=params.LOGGING,
         wandb_cfg=wandb_cfg,
         TASK=task,
+        early_stopping_rounds=params.EARLY_STOPPING_ROUNDS,
     )
     logger.info(
         f"[stage:train] END {model_type} training in {{:.2f}}s".format(
@@ -514,6 +516,7 @@ def run_sweep(params_path: ParamsPath = None) -> dict:
         wandb_cfg=wandb_cfg,
         TASK=task,
         catboost_search_space=params.CATBOOST_SEARCH_SPACE,
+        early_stopping_rounds=params.EARLY_STOPPING_ROUNDS,
     )
 
     logger.info(
@@ -587,6 +590,7 @@ def run_train(params_path: ParamsPath = None):
         LOGGING=params.LOGGING,
         wandb_cfg=wandb_cfg,
         TASK=task,
+        early_stopping_rounds=params.EARLY_STOPPING_ROUNDS,
     )
 
     logger.info(

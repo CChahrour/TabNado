@@ -250,7 +250,7 @@ def encode_classification_target(
     encoder = LabelEncoder()
 
     fit_values = train_data[target_col].astype(str)
-    if eval_data is not None:
+    if eval_data is not None and not eval_data.empty:
         fit_values = pd.concat([fit_values, eval_data[target_col].astype(str)], axis=0)
     encoder.fit(fit_values)
 

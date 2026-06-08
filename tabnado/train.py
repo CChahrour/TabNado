@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
 
 from tabnado.utils import (
     classification_metrics,
@@ -643,15 +644,65 @@ _TRAIN_BACKENDS = {
 }
 
 
-def train_model(model_type: str, best_hp: dict, *args, **kwargs):
+def _derive_validation_split(
+    train_data: pd.DataFrame,
+    target_cols: list[str],
+    task: str,
+    seed: int = 42,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Carve a validation split out of ``train_data`` when ``eval_chr`` is blank.
+
+    All backends require a non-empty eval set (for early stopping / validation
+    loss tracking), so an empty ``eval_data`` (no ``eval_chr`` configured) needs
+    a stand-in split — stratified by target for classification, where possible.
+    """
+    if len(train_data) < 4:
+        raise ValueError(
+            "Need at least 4 training rows to derive a validation split when "
+            "eval_chr is blank."
+        )
+
+    stratify = None
+    if task == "classification":
+        target = train_data[target_cols[0]].astype(str)
+        class_counts = target.value_counts()
+        if len(class_counts) >= 2 and int(class_counts.min()) >= 2:
+            stratify = target
+
+    return train_test_split(train_data, test_size=0.2, random_state=seed, stratify=stratify)
+
+
+def train_model(
+    model_type: str,
+    best_hp: dict,
+    feature_cols: list[str],
+    target_cols: list[str],
+    train_data: pd.DataFrame,
+    eval_data: pd.DataFrame,
+    *,
+    TASK: str = "auto",
+    **kwargs,
+):
     """Dispatch final-model training to the configured backend.
 
     ``model_type`` is one of ``"xgboost"``, ``"catboost"``, or ``"gandalf"``
     (any other value falls back to GANDALF, matching the legacy backend
-    selection in the pipeline API).
+    selection in the pipeline API). If ``eval_data`` is empty (``eval_chr``
+    left blank), a validation split is carved out of ``train_data`` so the
+    backends — which require a non-empty eval set — still have one to use.
     """
+    if eval_data is None or eval_data.empty:
+        task = resolve_task(TASK, train_data, target_cols)
+        logger.warning(
+            "eval split is empty (eval_chr left blank) — deriving a validation "
+            "split from train_data for final-model training"
+        )
+        train_data, eval_data = _derive_validation_split(train_data, target_cols, task)
+
     train_fn = _TRAIN_BACKENDS.get(model_type, _train_gandalf)
-    return train_fn(best_hp, *args, **kwargs)
+    return train_fn(
+        best_hp, feature_cols, target_cols, train_data, eval_data, TASK=TASK, **kwargs
+    )
 
 
 def main():

@@ -141,7 +141,8 @@ def plot_shap_stacked_bar(
         loc="upper left",
         borderaxespad=0,
     )
-    ax.margins(x=0.01)
+    ax.margins(x=0.01, y=0)
+    ax.set_ylim(n_rows - 0.5, -0.5)
     fig.tight_layout()
     path = f"{FIG_DIR}/shap_stacked_bar.png"
     fig.savefig(path, bbox_inches="tight", dpi=120)
