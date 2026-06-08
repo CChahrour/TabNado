@@ -4,39 +4,33 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from tabnado.catboost_shap import compute_catboost_shap
+from tabnado.shap import compute_shap
 
 
 def test_catboost_shap_supports_classification_artifact(
     monkeypatch,
     tmp_path: Path,
 ):
-    import tabnado.catboost_shap as catboost_shap
+    import tabnado.shap as tabnado_shap
 
     class FakeModel:
         pass
 
     observed = {}
 
-    class FakeExplanation:
-        def __init__(self, values):
-            self.values = values
-
     class FakeExplainer:
-        def __init__(self, model, background):
+        def __init__(self, model):
             observed["model"] = model
-            observed["background_rows"] = len(background)
-            observed["background_cols"] = list(background.columns)
 
-        def __call__(self, regions, check_additivity=False):
+        def shap_values(self, regions, check_additivity=False):
             observed["regions_rows"] = len(regions)
             observed["regions_cols"] = list(regions.columns)
             observed["check_additivity"] = check_additivity
             n_samples, n_features = regions.shape
             values = np.arange(n_samples * n_features, dtype=float)
-            return FakeExplanation(values.reshape(n_samples, n_features))
+            return values.reshape(n_samples, n_features)
 
-    monkeypatch.setattr(catboost_shap.shap, "Explainer", FakeExplainer)
+    monkeypatch.setattr(tabnado_shap.shap_pkg, "TreeExplainer", FakeExplainer)
 
     feature_cols = ["ChIP_A_-100", "ChIP_A_0", "ChIP_B_-100", "ChIP_B_0"]
     n_rows = 1005
@@ -50,7 +44,8 @@ def test_catboost_shap_supports_classification_artifact(
 
     res_dir = tmp_path / "results"
     fig_dir = tmp_path / "figures"
-    compute_catboost_shap(
+    compute_shap(
+        "catboost",
         {
             "task": "classification",
             "target_col": "label",
@@ -69,9 +64,7 @@ def test_catboost_shap_supports_classification_artifact(
 
     mean_abs = pd.read_csv(res_dir / "shap" / "shap_mean_abs.csv", index_col=0)
     assert isinstance(observed["model"], FakeModel)
-    assert observed["background_rows"] == len(train_data)
-    assert observed["background_cols"] == feature_cols
-    assert observed["regions_rows"] == len(train_data) + len(eval_data) + len(test_data)
+    assert observed["regions_rows"] == len(train_data)
     assert observed["regions_cols"] == feature_cols
     assert observed["check_additivity"] is False
     assert list(mean_abs.columns) == ["label_hot"]
@@ -82,34 +75,29 @@ def test_catboost_shap_supports_classification_artifact(
     assert (res_dir / "shap" / "spatial_shap_by_offset_label_hot.csv").exists()
 
 
-def test_catboost_multiclass_shap_uses_shap_explainer_without_background(
+def test_catboost_multiclass_shap_uses_tree_explainer_on_training_data(
     monkeypatch,
     tmp_path: Path,
 ):
-    import tabnado.catboost_shap as catboost_shap
+    import tabnado.shap as tabnado_shap
 
     class FakeModel:
         pass
 
     observed = {}
 
-    class FakeExplanation:
-        def __init__(self, values):
-            self.values = values
-
     class FakeExplainer:
-        def __init__(self, model, *args):
+        def __init__(self, model):
             observed["model"] = model
-            observed["n_background_args"] = len(args)
 
-        def __call__(self, regions, check_additivity=False):
+        def shap_values(self, regions, check_additivity=False):
             observed["regions_rows"] = len(regions)
             observed["check_additivity"] = check_additivity
             n_samples, n_features = regions.shape
             values = np.arange(n_samples * n_features * 3, dtype=float)
-            return FakeExplanation(values.reshape(n_samples, n_features, 3))
+            return values.reshape(n_samples, n_features, 3)
 
-    monkeypatch.setattr(catboost_shap.shap, "Explainer", FakeExplainer)
+    monkeypatch.setattr(tabnado_shap.shap_pkg, "TreeExplainer", FakeExplainer)
 
     feature_cols = ["ChIP_A_-100", "ChIP_A_0"]
     train_data = pd.DataFrame(
@@ -123,7 +111,8 @@ def test_catboost_multiclass_shap_uses_shap_explainer_without_background(
 
     res_dir = tmp_path / "results"
     fig_dir = tmp_path / "figures"
-    compute_catboost_shap(
+    compute_shap(
+        "catboost",
         {
             "task": "classification",
             "problem_type": "multiclass",
@@ -142,16 +131,14 @@ def test_catboost_multiclass_shap_uses_shap_explainer_without_background(
 
     mean_abs = pd.read_csv(res_dir / "shap" / "shap_mean_abs.csv", index_col=0)
     assert isinstance(observed["model"], FakeModel)
-    assert observed["n_background_args"] == 0
-    assert observed["regions_rows"] == len(train_data) + len(test_data)
+    assert observed["regions_rows"] == len(train_data)
     assert observed["check_additivity"] is False
     assert list(mean_abs.columns) == ["label_cold", "label_hot", "label_warm"]
 
 
 def test_run_shap_dispatches_catboost(monkeypatch, tmp_path: Path):
-    import joblib
     import tabnado.api as api
-    import tabnado.catboost_shap as catboost_shap
+    import tabnado.shap as tabnado_shap
 
     res_dir = tmp_path / "results"
     (res_dir / "final_model").mkdir(parents=True)
@@ -170,7 +157,8 @@ def test_run_shap_dispatches_catboost(monkeypatch, tmp_path: Path):
     test_data = pd.DataFrame({"feature_0": [0.2, 0.8], "label": ["cold", "hot"]})
     called = {}
 
-    def fake_compute_catboost_shap(*args, **kwargs):
+    def fake_compute_shap(model_type, final_model, *args, **kwargs):
+        called["model_type"] = model_type
         called["task"] = kwargs["task"]
 
     monkeypatch.setattr(api, "load_params", lambda params_path: params)
@@ -188,13 +176,11 @@ def test_run_shap_dispatches_catboost(monkeypatch, tmp_path: Path):
             test_data,
         ),
     )
-    monkeypatch.setattr(joblib, "load", lambda path: {"task": "classification"})
     monkeypatch.setattr(
-        catboost_shap,
-        "compute_catboost_shap",
-        fake_compute_catboost_shap,
+        tabnado_shap, "_load_final_model", lambda model_type, res_dir: {"task": "classification"}
     )
+    monkeypatch.setattr(tabnado_shap, "compute_shap", fake_compute_shap)
 
     api.run_shap("params.yaml")
 
-    assert called == {"task": "classification"}
+    assert called == {"model_type": "catboost", "task": "classification"}

@@ -8,6 +8,7 @@ from tabnado.evaluate import (
     _plot_roc_curve,
     compute_umap_embeddings,
 )
+from tabnado.utils import classification_metrics, flatten_metric_dict
 
 
 def test_plot_roc_curve_binary(tmp_path: Path):
@@ -67,6 +68,23 @@ def test_plot_roc_curve_multiclass(tmp_path: Path):
     assert (fig_dir / "roc_curve_label.png").exists()
     auc_df = pd.read_csv(eval_dir / "roc_auc.csv")
     assert set(auc_df["class"]) == {"a", "b", "c", "micro", "macro"}
+
+
+def test_classification_metrics_includes_f1_per_class_label():
+    metrics = classification_metrics(
+        pd.Series(["a", "a", "b", "b", "c", "c"]),
+        pd.Series(["a", "b", "b", "b", "c", "a"]),
+        classes=["a", "b", "c"],
+    )
+
+    assert metrics["per_class_f1"]["a"] == 0.5
+    assert metrics["per_class_f1"]["b"] == 0.8
+    assert np.isclose(metrics["per_class_f1"]["c"], 2 / 3)
+
+    flat = flatten_metric_dict(metrics, prefix="eval/")
+    assert flat["eval/per_class_f1/a"] == 0.5
+    assert flat["eval/per_class_f1/b"] == 0.8
+    assert np.isclose(flat["eval/per_class_f1/c"], 2 / 3)
 
 
 def test_limit_categorical_labels_groups_low_frequency_values():

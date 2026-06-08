@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tabnado import init as init_module
+from tabnado import cli as cli_module
 
 
 @pytest.fixture()
@@ -23,7 +23,7 @@ def test_init_creates_template(cli_output_dir, monkeypatch, capsys):
     output = cli_output_dir / "params.yaml"
     monkeypatch.setattr(sys, "argv", ["tabnado-init", str(output)])
 
-    init_module.main()
+    cli_module.init()
 
     assert output.exists()
     text = output.read_text(encoding="utf-8")
@@ -41,7 +41,7 @@ def test_init_refuses_overwrite_without_force(cli_output_dir, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["tabnado-init", str(output)])
 
     with pytest.raises(SystemExit):
-        init_module.main()
+        cli_module.init()
 
     assert output.read_text(encoding="utf-8") == "target: OLD\n"
 
@@ -52,6 +52,6 @@ def test_init_overwrites_with_force(cli_output_dir, monkeypatch):
 
     monkeypatch.setattr(sys, "argv", ["tabnado-init", str(output), "--force"])
 
-    init_module.main()
+    cli_module.init()
 
     assert "target: TARGET_NAME" in output.read_text(encoding="utf-8")

@@ -1,4 +1,4 @@
-from tabnado.gandalf_sweep import _make_data_config
+from tabnado.sweep import _make_data_config
 from tabnado.utils import LoguruProgressCallback
 
 

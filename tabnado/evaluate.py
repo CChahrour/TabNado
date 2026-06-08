@@ -21,8 +21,15 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import label_binarize
 
-from tabnado.tasks import classification_metrics, json_safe, resolve_task
-from tabnado.utils import figure_style, parse_params_arg, setup_logger
+from tabnado.utils import (
+    classification_metrics,
+    figure_style,
+    flatten_metric_dict,
+    json_safe,
+    parse_params_arg,
+    resolve_task,
+    setup_logger,
+)
 
 UMAP_CATEGORICAL_PALETTE_LIMIT = 20
 
@@ -213,13 +220,13 @@ def evaluate_model(
     os.makedirs(EVAL_DIR, exist_ok=True)
 
     if model_type == "xgboost":
-        from tabnado.xgb_train import predict_xgboost
+        from tabnado.train import predict_xgboost
 
         if feature_cols is None:
             raise ValueError("feature_cols required for xgboost evaluation")
         pred_df = predict_xgboost(final_model, test_data, feature_cols, target_cols)
     elif model_type == "catboost":
-        from tabnado.catboost_train import predict_catboost
+        from tabnado.train import predict_catboost
 
         if feature_cols is None:
             raise ValueError("feature_cols required for catboost evaluation")
@@ -314,8 +321,7 @@ def evaluate_model(
         logger.info(f"Saved confusion matrix: {confusion_path}")
 
         if wandb_run is not None:
-            flat = {f"eval/{k}": v for k, v in metrics.items()}
-            wandb_run.log(flat)
+            wandb_run.log(flatten_metric_dict(metrics, prefix="eval/"))
         return
 
     y_true = test_data[target_cols].values

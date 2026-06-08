@@ -11,9 +11,9 @@ from loguru import logger
 
 from tabnado.data import load_data
 from tabnado.params import PipelineParams
-from tabnado.tasks import resolve_task
 from tabnado.utils import (
     figure_style,
+    resolve_task,
     setup_logger,
 )
 
@@ -126,149 +126,52 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
             res_dir=params.RES_DIR,
         )
 
-    if model_type == "xgboost":
-        from tabnado.xgb_sweep import sweep_xgboost
-        from tabnado.xgb_train import train_xgboost
+    from tabnado.sweep import sweep_model
+    from tabnado.train import train_model
 
-        stage_start = perf_counter()
-        logger.info("[stage:sweep] START XGBoost hyperparameter sweep")
-        best_hp = sweep_xgboost(
-            feature_cols=feature_cols,
-            target_cols=target_cols,
-            train_data=train_data,
-            n_sweeps=params.N_SWEEPS,
-            sweep_fraction=params.SWEEP_FRACTION,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
+    stage_start = perf_counter()
+    logger.info(f"[stage:sweep] START {model_type} hyperparameter sweep")
+    best_hp = sweep_model(
+        model_type,
+        feature_cols=feature_cols,
+        target_cols=target_cols,
+        train_data=train_data,
+        eval_data=eval_data,
+        test_data=test_data,
+        n_sweeps=params.N_SWEEPS,
+        sweep_fraction=params.SWEEP_FRACTION,
+        RES_DIR=params.RES_DIR,
+        LOGGING=params.LOGGING,
+        LOGGING_DIR=params.LOGGING_DIR,
+        wandb_cfg=wandb_cfg,
+        TASK=task,
+    )
+    logger.info(
+        f"[stage:sweep] END {model_type} sweep in {{:.2f}}s".format(
+            perf_counter() - stage_start
         )
-        logger.info(
-            "[stage:sweep] END XGBoost sweep in {:.2f}s".format(
-                perf_counter() - stage_start
-            )
-        )
+    )
 
-        stage_start = perf_counter()
-        logger.info("[stage:train] START XGBoost final model training")
-        final_model = train_xgboost(
-            best_hp,
-            feature_cols,
-            target_cols,
-            train_data,
-            eval_data,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
+    stage_start = perf_counter()
+    logger.info(f"[stage:train] START {model_type} final model training")
+    final_model = train_model(
+        model_type,
+        best_hp,
+        feature_cols,
+        target_cols,
+        train_data,
+        eval_data,
+        RES_DIR=params.RES_DIR,
+        LOGGING_DIR=params.LOGGING_DIR,
+        LOGGING=params.LOGGING,
+        wandb_cfg=wandb_cfg,
+        TASK=task,
+    )
+    logger.info(
+        f"[stage:train] END {model_type} training in {{:.2f}}s".format(
+            perf_counter() - stage_start
         )
-        logger.info(
-            "[stage:train] END XGBoost training in {:.2f}s".format(
-                perf_counter() - stage_start
-            )
-        )
-    elif model_type == "catboost":
-        from tabnado.catboost_sweep import sweep_catboost
-        from tabnado.catboost_train import train_catboost
-
-        stage_start = perf_counter()
-        logger.info("[stage:sweep] START CatBoost hyperparameter sweep")
-        best_hp = sweep_catboost(
-            feature_cols=feature_cols,
-            target_cols=target_cols,
-            train_data=train_data,
-            n_sweeps=params.N_SWEEPS,
-            sweep_fraction=params.SWEEP_FRACTION,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
-        logger.info(
-            "[stage:sweep] END CatBoost sweep in {:.2f}s".format(
-                perf_counter() - stage_start
-            )
-        )
-
-        stage_start = perf_counter()
-        logger.info("[stage:train] START CatBoost final model training")
-        final_model = train_catboost(
-            best_hp,
-            feature_cols,
-            target_cols,
-            train_data,
-            eval_data,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
-        logger.info(
-            "[stage:train] END CatBoost training in {:.2f}s".format(
-                perf_counter() - stage_start
-            )
-        )
-    else:
-        from tabnado.gandalf_sweep import (
-            get_best_hp_from_sweep,
-            start_sweep_and_run,
-        )
-        from tabnado.gandalf_train import train_final_model
-
-        stage_start = perf_counter()
-        logger.info("[stage:sweep] START hyperparameter sweep")
-        sweep_id = start_sweep_and_run(
-            train_data,
-            eval_data,
-            test_data,
-            feature_cols,
-            target_cols,
-            count=params.N_SWEEPS,
-            RES_DIR=params.RES_DIR,
-            SWEEP_FRACTION=params.SWEEP_FRACTION,
-            LOGGING=params.LOGGING,
-            LOGGING_DIR=params.LOGGING_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
-        logger.info(
-            "[stage:sweep] END hyperparameter sweep in {:.2f}s (sweep_id={})".format(
-                perf_counter() - stage_start, sweep_id
-            )
-        )
-
-        stage_start = perf_counter()
-        logger.info("[stage:sweep] START best-hp selection")
-        best_hp = get_best_hp_from_sweep(
-            sweep_id,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-        )
-        logger.info(f"Best hyperparameters: {best_hp}")
-        best_hp_path = f"{params.RES_DIR}/best_hyperparameters.json"
-        with open(best_hp_path, "w") as f:
-            json.dump(best_hp, f, indent=4)
-        logger.info(
-            "[stage:sweep] END best-hp selection in {:.2f}s (saved={})".format(
-                perf_counter() - stage_start, best_hp_path
-            )
-        )
-
-        stage_start = perf_counter()
-        logger.info("[stage:train] START final model training")
-        final_model = train_final_model(
-            best_hp,
-            feature_cols,
-            target_cols,
-            train_data,
-            eval_data,
-            RES_DIR=params.RES_DIR,
-            LOGGING_DIR=params.LOGGING_DIR,
-            LOGGING=params.LOGGING,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
-        logger.info(
-            "[stage:train] END final model training in {:.2f}s".format(
-                perf_counter() - stage_start
-            )
-        )
+    )
 
     # Open a fresh wandb run for evaluation + SHAP (sweep/train stages finish any prior run)
     _eval_wandb_run = None
@@ -314,51 +217,21 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
     # SHAP analysis
     stage_start = perf_counter()
     logger.info("[stage:shap] START shap analysis")
-    if model_type == "xgboost":
-        from tabnado.xgb_shap import compute_xgb_shap
+    from tabnado.shap import compute_shap
 
-        compute_xgb_shap(
-            final_model,
-            train_data,
-            test_data,
-            feature_cols,
-            target_cols,
-            eval_data=eval_data,
-            RES_DIR=params.RES_DIR,
-            FIG_DIR=params.FIG_DIR,
-            task=task,
-            wandb_run=_eval_wandb_run,
-        )
-    elif model_type == "catboost":
-        from tabnado.catboost_shap import compute_catboost_shap
-
-        compute_catboost_shap(
-            final_model,
-            train_data,
-            test_data,
-            feature_cols,
-            target_cols,
-            eval_data=eval_data,
-            RES_DIR=params.RES_DIR,
-            FIG_DIR=params.FIG_DIR,
-            task=task,
-            wandb_run=_eval_wandb_run,
-        )
-    else:
-        from tabnado.gandalf_shap import compute_gandalf_shap
-
-        compute_gandalf_shap(
-            final_model,
-            train_data,
-            test_data,
-            feature_cols,
-            target_cols,
-            eval_data=eval_data,
-            RES_DIR=params.RES_DIR,
-            FIG_DIR=params.FIG_DIR,
-            task=task,
-            wandb_run=_eval_wandb_run,
-        )
+    compute_shap(
+        model_type,
+        final_model,
+        train_data,
+        test_data,
+        feature_cols,
+        target_cols,
+        eval_data=eval_data,
+        RES_DIR=params.RES_DIR,
+        FIG_DIR=params.FIG_DIR,
+        task=task,
+        wandb_run=_eval_wandb_run,
+    )
     logger.info(
         "[stage:shap] END shap analysis in {:.2f}s".format(
             perf_counter() - stage_start
@@ -413,59 +286,23 @@ def run_sweep(params_path: ParamsPath = None) -> dict:
     )
     task = resolve_task(params.TASK, train_data, target_cols)
 
-    if params.MODEL_TYPE == "xgboost":
-        from tabnado.xgb_sweep import sweep_xgboost
+    from tabnado.sweep import sweep_model
 
-        best_hp = sweep_xgboost(
-            feature_cols=feature_cols,
-            target_cols=target_cols,
-            train_data=train_data,
-            n_sweeps=params.N_SWEEPS,
-            sweep_fraction=params.SWEEP_FRACTION,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
-    elif params.MODEL_TYPE == "catboost":
-        from tabnado.catboost_sweep import sweep_catboost
-
-        best_hp = sweep_catboost(
-            feature_cols=feature_cols,
-            target_cols=target_cols,
-            train_data=train_data,
-            n_sweeps=params.N_SWEEPS,
-            sweep_fraction=params.SWEEP_FRACTION,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
-    else:
-        from tabnado.gandalf_sweep import get_best_hp_from_sweep, start_sweep_and_run
-
-        sweep_id = start_sweep_and_run(
-            train_data,
-            eval_data,
-            test_data,
-            feature_cols,
-            target_cols,
-            count=params.N_SWEEPS,
-            RES_DIR=params.RES_DIR,
-            SWEEP_FRACTION=params.SWEEP_FRACTION,
-            LOGGING=params.LOGGING,
-            LOGGING_DIR=params.LOGGING_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
-        best_hp = get_best_hp_from_sweep(
-            sweep_id,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-        )
-        logger.info(f"Best hyperparameters: {best_hp}")
-        hp_path = Path(params.RES_DIR) / "best_hyperparameters.json"
-        with open(hp_path, "w") as f:
-            json.dump(best_hp, f, indent=4)
-        logger.info(f"Saved best hyperparameters to {hp_path}")
+    best_hp = sweep_model(
+        params.MODEL_TYPE,
+        feature_cols=feature_cols,
+        target_cols=target_cols,
+        train_data=train_data,
+        eval_data=eval_data,
+        test_data=test_data,
+        n_sweeps=params.N_SWEEPS,
+        sweep_fraction=params.SWEEP_FRACTION,
+        RES_DIR=params.RES_DIR,
+        LOGGING=params.LOGGING,
+        LOGGING_DIR=params.LOGGING_DIR,
+        wandb_cfg=wandb_cfg,
+        TASK=task,
+    )
 
     logger.info(
         "========== SWEEP END ({:.2f}s total) ==========".format(
@@ -488,47 +325,21 @@ def run_train(params_path: ParamsPath = None):
     )
     task = resolve_task(params.TASK, train_data, target_cols)
 
-    if params.MODEL_TYPE == "xgboost":
-        from tabnado.xgb_train import train_xgboost
+    from tabnado.train import train_model
 
-        final_model = train_xgboost(
-            best_hp,
-            feature_cols,
-            target_cols,
-            train_data,
-            eval_data,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
-    elif params.MODEL_TYPE == "catboost":
-        from tabnado.catboost_train import train_catboost
-
-        final_model = train_catboost(
-            best_hp,
-            feature_cols,
-            target_cols,
-            train_data,
-            eval_data,
-            RES_DIR=params.RES_DIR,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
-    else:
-        from tabnado.gandalf_train import train_final_model
-
-        final_model = train_final_model(
-            best_hp,
-            feature_cols,
-            target_cols,
-            train_data,
-            eval_data,
-            RES_DIR=params.RES_DIR,
-            LOGGING_DIR=params.LOGGING_DIR,
-            LOGGING=params.LOGGING,
-            wandb_cfg=wandb_cfg,
-            TASK=task,
-        )
+    final_model = train_model(
+        params.MODEL_TYPE,
+        best_hp,
+        feature_cols,
+        target_cols,
+        train_data,
+        eval_data,
+        RES_DIR=params.RES_DIR,
+        LOGGING_DIR=params.LOGGING_DIR,
+        LOGGING=params.LOGGING,
+        wandb_cfg=wandb_cfg,
+        TASK=task,
+    )
 
     logger.info(
         "========== TRAIN END ({:.2f}s total) ==========".format(
@@ -609,56 +420,21 @@ def run_shap(params_path: ParamsPath = None) -> None:
     )
     task = resolve_task(params.TASK, train_data, target_cols)
 
-    if params.MODEL_TYPE == "xgboost":
-        from joblib import load
-        from tabnado.xgb_shap import compute_xgb_shap
+    from tabnado.shap import _load_final_model, compute_shap
 
-        final_model = load(model_path / "xgboost_model.joblib")
-        compute_xgb_shap(
-            final_model,
-            train_data,
-            test_data,
-            feature_cols,
-            target_cols,
-            eval_data=eval_data,
-            RES_DIR=params.RES_DIR,
-            FIG_DIR=params.FIG_DIR,
-            task=task,
-        )
-    elif params.MODEL_TYPE == "catboost":
-        from joblib import load
-        from tabnado.catboost_shap import compute_catboost_shap
-
-        final_model = load(model_path / "catboost_model.joblib")
-        compute_catboost_shap(
-            final_model,
-            train_data,
-            test_data,
-            feature_cols,
-            target_cols,
-            eval_data=eval_data,
-            RES_DIR=params.RES_DIR,
-            FIG_DIR=params.FIG_DIR,
-            task=task,
-        )
-    else:
-        from pytorch_tabular import TabularModel
-        from tabnado.gandalf_shap import compute_gandalf_shap
-
-        final_model = TabularModel.load_model(model_path)
-        if final_model.model is None:
-            raise RuntimeError("Loaded model has no weights — check model directory")
-        compute_gandalf_shap(
-            final_model,
-            train_data,
-            test_data,
-            feature_cols,
-            target_cols,
-            eval_data=eval_data,
-            RES_DIR=params.RES_DIR,
-            FIG_DIR=params.FIG_DIR,
-            task=task,
-        )
+    final_model = _load_final_model(params.MODEL_TYPE, params.RES_DIR)
+    compute_shap(
+        params.MODEL_TYPE,
+        final_model,
+        train_data,
+        test_data,
+        feature_cols,
+        target_cols,
+        eval_data=eval_data,
+        RES_DIR=params.RES_DIR,
+        FIG_DIR=params.FIG_DIR,
+        task=task,
+    )
 
     logger.info(
         "========== SHAP END ({:.2f}s total) ==========".format(
@@ -669,7 +445,7 @@ def run_shap(params_path: ParamsPath = None) -> None:
 
 def write_params_template(path: Path | str = "params.yaml", force: bool = False) -> Path:
     """Write a starter params YAML file, matching ``tabnado-init``."""
-    from tabnado.init import PARAMS_TEMPLATE
+    from tabnado.cli import PARAMS_TEMPLATE
 
     output_path = Path(path)
     if output_path.exists() and not force:
