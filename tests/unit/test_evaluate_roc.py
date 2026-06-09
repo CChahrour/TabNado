@@ -88,13 +88,7 @@ def test_classification_metrics_includes_f1_per_class_label():
 
 
 def test_limit_categorical_labels_groups_low_frequency_values():
-    labels = pd.Series(
-        ["a"] * 5
-        + ["b"] * 4
-        + ["c"] * 3
-        + ["d"] * 2
-        + ["e"]
-    )
+    labels = pd.Series(["a"] * 5 + ["b"] * 4 + ["c"] * 3 + ["d"] * 2 + ["e"])
 
     display = _limit_categorical_labels(labels, max_categories=4)
 

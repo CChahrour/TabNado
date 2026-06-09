@@ -8,13 +8,14 @@ import pytest
 
 import tabnado.api as api
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _fake_params(tmp_path, logging="tensorboard", model_type="xgboost", task="classification"):
+def _fake_params(
+    tmp_path, logging="tensorboard", model_type="xgboost", task="classification"
+):
     return SimpleNamespace(
         PROJECT="test",
         LOGGING=logging,
@@ -221,7 +222,15 @@ def test_run_evaluate_raises_if_model_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(
         api,
         "load_data",
-        lambda **kw: (None, None, ["label"], ["f0"], _small_df(), _small_df(), _small_df()),
+        lambda **kw: (
+            None,
+            None,
+            ["label"],
+            ["f0"],
+            _small_df(),
+            _small_df(),
+            _small_df(),
+        ),
     )
     monkeypatch.setattr(api, "resolve_task", lambda task, data, cols: "classification")
 
@@ -242,7 +251,15 @@ def test_run_shap_raises_if_model_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(
         api,
         "load_data",
-        lambda **kw: (None, None, ["label"], ["f0"], _small_df(), _small_df(), _small_df()),
+        lambda **kw: (
+            None,
+            None,
+            ["label"],
+            ["f0"],
+            _small_df(),
+            _small_df(),
+            _small_df(),
+        ),
     )
 
     with pytest.raises(FileNotFoundError, match="Run train first"):
@@ -271,12 +288,22 @@ def test_run_evaluate_loads_xgboost_joblib(monkeypatch, tmp_path):
     monkeypatch.setattr(
         api,
         "load_data",
-        lambda **kw: (None, None, ["label"], ["f0"], _small_df(), _small_df(), _small_df()),
+        lambda **kw: (
+            None,
+            None,
+            ["label"],
+            ["f0"],
+            _small_df(),
+            _small_df(),
+            _small_df(),
+        ),
     )
     monkeypatch.setattr(api, "resolve_task", lambda task, data, cols: "classification")
 
     evaluate_calls = []
-    monkeypatch.setattr(api, "evaluate_model", lambda *a, **k: evaluate_calls.append(a[0]))
+    monkeypatch.setattr(
+        api, "evaluate_model", lambda *a, **k: evaluate_calls.append(a[0])
+    )
     monkeypatch.setattr(api, "compute_umap_embeddings", lambda *a, **k: None)
 
     api.run_evaluate("params.yaml")
@@ -299,7 +326,15 @@ def test_run_train_raises_if_no_best_hp(monkeypatch, tmp_path):
     monkeypatch.setattr(
         api,
         "load_data",
-        lambda **kw: (None, None, ["label"], ["f0"], _small_df(), _small_df(), _small_df()),
+        lambda **kw: (
+            None,
+            None,
+            ["label"],
+            ["f0"],
+            _small_df(),
+            _small_df(),
+            _small_df(),
+        ),
     )
     monkeypatch.setattr(api, "resolve_task", lambda task, data, cols: "classification")
 

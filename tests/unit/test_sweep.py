@@ -158,6 +158,7 @@ def test_catboost_sweep_regression_uses_rmse_loss(monkeypatch, tmp_path: Path):
 
         def predict(self, X):
             import numpy as np
+
             return np.zeros(len(X))
 
     class FakeClassifier:
@@ -278,6 +279,7 @@ def test_sweep_model_unknown_falls_back_to_gandalf(monkeypatch, tmp_path: Path):
 
 def _make_xgb_fake_module():
     from unittest.mock import MagicMock
+
     return MagicMock()
 
 

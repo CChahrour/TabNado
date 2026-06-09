@@ -13,7 +13,6 @@ from tabnado.train import (
     train_model,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -297,6 +296,7 @@ def test_load_xgboost_model_round_trip(tmp_path):
     joblib.dump(fake, model_dir / "xgboost_model.joblib")
 
     import sys
+
     sys.modules.setdefault("xgboost", MagicMock())
 
     from tabnado.train import load_xgboost_model
@@ -328,14 +328,18 @@ def test_train_model_routes_xgboost():
     called = {}
     original = train_module._TRAIN_BACKENDS["xgboost"]
 
-    def fake_xgboost(best_hp, feature_cols, target_cols, train_data, eval_data, **kwargs):
+    def fake_xgboost(
+        best_hp, feature_cols, target_cols, train_data, eval_data, **kwargs
+    ):
         called["backend"] = "xgboost"
         return "xgb_model"
 
     train_module._TRAIN_BACKENDS["xgboost"] = fake_xgboost
     try:
         df = _make_binary_data(10)
-        train_model("xgboost", {}, FEATURE_COLS, ["label"], df, df.copy(), TASK="classification")
+        train_model(
+            "xgboost", {}, FEATURE_COLS, ["label"], df, df.copy(), TASK="classification"
+        )
     finally:
         train_module._TRAIN_BACKENDS["xgboost"] = original
 
@@ -347,7 +351,9 @@ def test_train_model_unknown_type_falls_back_to_gandalf(monkeypatch):
 
     called = {}
 
-    def fake_gandalf(best_hp, feature_cols, target_cols, train_data, eval_data, **kwargs):
+    def fake_gandalf(
+        best_hp, feature_cols, target_cols, train_data, eval_data, **kwargs
+    ):
         called["backend"] = "gandalf"
         return "gandalf_model"
 
@@ -355,7 +361,15 @@ def test_train_model_unknown_type_falls_back_to_gandalf(monkeypatch):
     monkeypatch.setattr(train_module, "_train_gandalf", fake_gandalf)
 
     df = _make_regression_data(10)
-    train_model("unknown_backend", {}, FEATURE_COLS, ["target"], df, df.copy(), TASK="regression")
+    train_model(
+        "unknown_backend",
+        {},
+        FEATURE_COLS,
+        ["target"],
+        df,
+        df.copy(),
+        TASK="regression",
+    )
 
     assert called.get("backend") == "gandalf"
 
@@ -375,7 +389,9 @@ def test_train_model_derives_split_when_eval_empty(monkeypatch):
     called = {}
     original_xgb = train_module._TRAIN_BACKENDS["xgboost"]
 
-    def fake_xgboost(best_hp, feature_cols, target_cols, train_data, eval_data, **kwargs):
+    def fake_xgboost(
+        best_hp, feature_cols, target_cols, train_data, eval_data, **kwargs
+    ):
         called["eval_len"] = len(eval_data)
         return "model"
 
@@ -383,7 +399,15 @@ def test_train_model_derives_split_when_eval_empty(monkeypatch):
     try:
         df = _make_binary_data(20)
         empty_eval = pd.DataFrame()
-        train_model("xgboost", {}, FEATURE_COLS, ["label"], df, empty_eval, TASK="classification")
+        train_model(
+            "xgboost",
+            {},
+            FEATURE_COLS,
+            ["label"],
+            df,
+            empty_eval,
+            TASK="classification",
+        )
     finally:
         train_module._TRAIN_BACKENDS["xgboost"] = original_xgb
 

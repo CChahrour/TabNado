@@ -254,7 +254,9 @@ def _patch_run_shap_dispatch(monkeypatch, tmp_path, model_type, called):
         ),
     )
     monkeypatch.setattr(
-        tabnado_shap, "_load_final_model", lambda model_type, res_dir: {"task": "classification"}
+        tabnado_shap,
+        "_load_final_model",
+        lambda model_type, res_dir: {"task": "classification"},
     )
     monkeypatch.setattr(tabnado_shap, "compute_shap", fake_compute_shap)
     return params

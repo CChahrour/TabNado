@@ -7,29 +7,29 @@
 	<img src="assets/tabnado.png" alt="TabNado logo" width="220" />
 </p>
 
-Predicts binding from epigenomic cofactors (ChIP-seq, CUT&TAG, CUT&RUN) over tiled TSS windows or user-defined BED regions, with support for both GANDALF (neural tabular) and XGBoost backends.
+Predicts binding from epigenomic cofactors (ChIP-seq, CUT&TAG, CUT&RUN) over tiled TSS windows or user-defined BED regions. Supports classification and regression tasks with three model backends: GANDALF (neural tabular), XGBoost, and CatBoost.
 
 Uses datasets prepared with [QuantNado](https://github.com/Milne-Group/QuantNado) via [SeqNado](https://github.com/Milne-Group/SeqNado).
 
 ## What It Does
 
-1. Builds train/eval/test tabular datasets from genomic signal.
-2. Runs hyperparameter sweeps (GANDALF or XGBoost backend).
+1. Builds train/eval/test tabular datasets from genomic signal split by chromosome.
+2. Runs Optuna hyperparameter sweeps with the configured backend (GANDALF, XGBoost, or CatBoost).
 3. Trains a final model with best hyperparameters.
-4. Evaluates predictions and exports metrics/figures.
-5. Computes SHAP feature importance outputs.
+4. Evaluates predictions and exports metrics and figures.
+5. Computes SHAP feature importance and spatial SHAP outputs.
 
 ## Pipeline at a Glance
 
-1. Data prep and split: chr8 for eval, chr9 for test.
-2. Sweep stage: identifies best hyperparameters.
-3. Train stage: produces `final_model/`.
-4. Evaluate stage: metrics, scatter, UMAP artifacts.
-5. SHAP stage: feature importance and spatial SHAP artifacts.
+1. **Data** — normalise signal, filter samples, split by chromosome.
+2. **Sweep** — Optuna search → `best_hyperparameters.json`.
+3. **Train** — final fit → `final_model/`.
+4. **Evaluate** — metrics, scatter/ROC, UMAP → `evaluate/` and `figures/`.
+5. **SHAP** — feature importance and spatial SHAP → `shap/` and `figures/`.
 
 ## Main Entry Points
 
-- Initialise the parameters: `tabnado-init`
+- Initialise parameters: `tabnado-init`
 - Full pipeline: `tabnado-run --params params.yaml`
 - Data only: `tabnado-data --params params.yaml`
 - Sweep only: `tabnado-sweep --params params.yaml`

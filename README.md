@@ -7,22 +7,23 @@
 </p>
 
 
-Predicts binding from epigenomic cofactors (ChIP-seq, CUT&TAG, CUT&RUN) over tiled TSS windows or user-defined BED regions, with support for both GANDALF (neural tabular) and XGBoost backends.
+Predicts binding from epigenomic cofactors (ChIP-seq, CUT&TAG, CUT&RUN) over tiled TSS windows or user-defined BED regions. Supports classification and regression tasks with three model backends: GANDALF (neural tabular), XGBoost, and CatBoost.
 
 Uses datasets prepared with [QuantNado](https://github.com/Milne-Group/QuantNado) via [SeqNado](https://github.com/Milne-Group/SeqNado).
 
 ## Overview
 
-1. **Data** — signal is extracted from an xarray dataset, normalised to RPKM, log1p + MinMax scaled, and split by chromosome (chr8 = eval, chr9 = test).
-2. **Sweep** — backend-specific hyperparameter sweep.
-3. **Train** — final model trained with best HP on full training set.
-4. **Evaluate** — test-set metrics and UMAP embeddings.
+1. **Data** — signal is extracted from an xarray dataset, normalised to RPKM, log1p + MinMax scaled, and split by chromosome.
+2. **Sweep** — Optuna hyperparameter sweep using the configured backend.
+3. **Train** — final model trained with best hyperparameters on the full training set.
+4. **Evaluate** — test-set metrics, figures, and UMAP embeddings.
 5. **SHAP** — feature importance and spatial SHAP analysis.
 
-Backend selection is controlled by `model_name`:
+Backend is controlled by `model_name`:
 
-- `GANDALF` for the GANDALF neural tabular backend
-- `XGBoost` for the XGBoost backend
+- `gandalf` — GANDALF neural tabular backend
+- `xgboost` — XGBoost gradient-boosted trees
+- `catboost` — CatBoost gradient-boosted trees
 
 ## Setup
 
@@ -34,7 +35,7 @@ apptainer pull tabnado.sif docker://ghcr.io/cchahrour/tabnado:latest
 
 All parameters are set in `params.yaml`.
 
-You can generate a starter template:
+Generate a starter template:
 
 ```bash
 tabnado-init
@@ -42,43 +43,52 @@ tabnado-init
 tabnado-init experiments/params_MLLN.yaml
 ```
 
-Required keys:
+**Required keys** (pipeline fails without these):
 
-- `target`
-- `model_name` (`gandalf` or `xgboost`)
-- `sweep_fraction`
-- `gtf_file`
-- `eval_chr`
-- `test_chr`
-- `output_dir`
-- `dataset`
-- `n_sweeps`
-- `logging` (`wandb` or `tensorboard`)
-- `min_target`
-- `min_features`
-- `prefixes`
-- `window_size`
-- `step_size`
-- `tile_size`
+- `dataset` — path to the QuantNado xarray dataset
+- `model_name` — `gandalf`, `xgboost`, or `catboost`
+- `target` — target IP name (e.g. `MLLN`)
+- `output_dir` — base output root
 
-Optional keys:
+**Optional keys** (all have sensible defaults):
 
-- `windows_bed` (auto-generated from GTF if omitted)
+| Key | Default | Description |
+|-----|---------|-------------|
+| `logging` | `wandb` | `wandb` or `tensorboard` |
+| `task` | `auto` | `auto`, `classification`, or `regression` |
+| `eval_chr` | `chr8` | Chromosome(s) for validation; can be blank, a string, or a list |
+| `test_chr` | `chr9` | Chromosome(s) for test; same format as `eval_chr` |
+| `n_sweeps` | `0` | Number of Optuna trials (0 = use defaults) |
+| `sweep_fraction` | `0.0` | Fraction of training data per sweep trial |
+| `early_stopping` | `10` | Early stopping rounds (XGBoost/CatBoost) |
+| `gtf_file` | — | GTF path; required if `windows_bed` is not provided |
+| `windows_bed` | auto | BED file of TSS windows; auto-generated from GTF if omitted |
+| `window_size` | `2000` | Genomic window size around TSS in bp |
+| `step_size` | `250` | Sliding window step size in bp |
+| `tile_size` | `1000` | Tile size in bp |
+| `min_target` | `1.0` | Minimum target sample count |
+| `min_features` | `1` | Minimum feature IP count |
+| `prefixes` | `[]` | Assay prefixes to include (e.g. `[ChIP, CAT]`) |
+| `exclude_ips` | `[]` | IP names to exclude from modelling |
+| `class_balance` | `none` | `none`, `undersample`, `oversample`, or `smote` |
+| `catboost_search_space` | `extended` | `extended` or `notebook` |
+| `entity` | — | W&B entity (team/username); defaults to your W&B default |
+| `chunk_size_rows` | `1000000` | Rows per chunk during signal extraction |
 
 Example:
 
 ```yaml
 target: MLLN
-model_name: GANDALF
-sweep_fraction: 0.2
+model_name: xgboost
+output_dir: results
+dataset: data/dataset
 gtf_file: data/regions/gencode.v49.annotation.gtf
 eval_chr: chr8
 test_chr: chr9
-output_dir: results
-windows_bed: data/tss_windows.bed
-dataset: data/dataset
-n_sweeps: 10
 logging: wandb
+n_sweeps: 100
+sweep_fraction: 0.2
+task: classification
 ```
 
 Pass a custom config with `--params` / `-p` to run different experiments without editing the file.
@@ -97,7 +107,7 @@ tabnado-run --params params.yaml
 tabnado-data     --params params.yaml   # build / validate train/eval/test splits
 tabnado-sweep    --params params.yaml   # HP sweep → results/<project>/best_hyperparameters.json
 tabnado-train    --params params.yaml   # train final model → results/<project>/final_model/
-tabnado-evaluate --params params.yaml   # metrics + UMAP → results/<project>/figures/
+tabnado-evaluate --params params.yaml   # metrics + UMAP → results/<project>/evaluate/ and figures/
 tabnado-shap     --params params.yaml   # SHAP analysis → results/<project>/shap/
 ```
 
@@ -156,33 +166,23 @@ apptainer exec \
 
 ## Outputs
 
-Results are written to `results/<MODEL_NAME>_<TARGET>/`:
+Results are written to `<output_dir>/<model_name>_<target>/`:
 
 | Path | Contents |
 |------|----------|
-| `dataset/` | Processed dataset |
 | `best_hyperparameters.json` | Best hyperparameters from sweep |
-| `final_model/` | Saved backend model (for example `xgboost_model.joblib` for XGBoost) |
-| `figures/scatter_test.png` | True vs predicted scatter |
-| `figures/roc_curve_<target>.png` | ROC curve for classification runs |
-| `evaluate/roc_auc.csv` | ROC AUC summary for classification runs |
-| `figures/embeddings_umap.png` | UMAP embedding output |
-| `figures/shap_clustermap.png` | Mean \|SHAP\| heatmap across cofactors and targets |
-| `figures/shap_stacked_bar.png` | Stacked mean \|SHAP\| bar plot by cofactor and output |
+| `final_model/` | Saved model (`xgboost_model.joblib`, `catboost_model.joblib`, or GANDALF directory) |
+| `evaluate/metrics.json` | Test-set evaluation metrics |
+| `evaluate/predictions.parquet` | Model predictions on test chromosome |
+| `figures/scatter_test_<target>.png` | True vs predicted scatter (regression) |
+| `figures/roc_curve_<target>.png` | ROC curve (classification) |
+| `evaluate/roc_auc.csv` | ROC AUC summary (classification) |
+| `evaluate/classification_report.csv` | Per-class precision/recall/F1 (classification) |
+| `evaluate/confusion_matrix.csv` | Confusion matrix (classification) |
+| `figures/embeddings_umap.png` | UMAP embedding figure |
 | `shap/shap_mean_abs.csv` | Mean absolute SHAP by feature and target |
-| `shap/shap_stacked_bar_data.csv` | Data used for the stacked SHAP bar plot |
-| `shap/spatial_shap_by_offset_<target>.csv` | Spatial SHAP summary by genomic offset per target |
-| `figures/shap_spatial_heatmap_<target>.png` | Spatial SHAP heatmap (cofactor × offset) per target |
-| `figures/shap_offset_line_<target>.png` | SHAP importance profile by genomic offset per target |
-
-## Required files
-
-To run the model you need:
-
-```
-<working_dir>/
-└── params.yaml           # experiment config (edit this)
-```
-
-Processed dataset is written to `<data_dir>`
-Results are written to `results/<MODEL_NAME>_<TARGET>/` relative to wherever you run the command.
+| `figures/shap_clustermap.png` | Mean \|SHAP\| heatmap across cofactors and targets |
+| `figures/shap_stacked_bar.png` | Stacked mean \|SHAP\| bar by cofactor and output |
+| `shap/spatial_shap_by_offset_<target>.csv` | Spatial SHAP by genomic offset per target |
+| `figures/shap_spatial_heatmap_<target>.png` | Spatial SHAP heatmap per target |
+| `figures/shap_offset_line_<target>.png` | SHAP importance profile by offset per target |

@@ -13,7 +13,6 @@ from tabnado.utils import (
     validate_task,
 )
 
-
 # ---------------------------------------------------------------------------
 # validate_task / resolve_task
 # ---------------------------------------------------------------------------
@@ -134,7 +133,12 @@ def test_shap_cols_multiclass_one_output_returns_target():
 
 def test_shap_cols_mismatch_returns_indexed():
     result = classification_shap_output_columns("label", ["a", "b"], 4)
-    assert result == ["label_output_0", "label_output_1", "label_output_2", "label_output_3"]
+    assert result == [
+        "label_output_0",
+        "label_output_1",
+        "label_output_2",
+        "label_output_3",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +149,9 @@ def test_shap_cols_mismatch_returns_indexed():
 def test_prediction_frame_2d_probabilities():
     labels = np.array(["hot", "cold"])
     proba = np.array([[0.2, 0.8], [0.7, 0.3]])
-    df = classification_prediction_frame(labels, proba, "label", ["cold", "hot"], pd.RangeIndex(2))
+    df = classification_prediction_frame(
+        labels, proba, "label", ["cold", "hot"], pd.RangeIndex(2)
+    )
     assert list(df["label"]) == ["hot", "cold"]
     assert "label_hot_probability" in df.columns
 
@@ -153,14 +159,18 @@ def test_prediction_frame_2d_probabilities():
 def test_prediction_frame_1d_probability_expands_to_2d():
     labels = np.array(["hot", "cold"])
     proba_1d = np.array([0.8, 0.3])
-    df = classification_prediction_frame(labels, proba_1d, "label", ["cold", "hot"], pd.RangeIndex(2))
+    df = classification_prediction_frame(
+        labels, proba_1d, "label", ["cold", "hot"], pd.RangeIndex(2)
+    )
     assert df.shape[1] == 3  # label + 2 probability cols
     assert df["label_hot_probability"].iloc[0] == pytest.approx(0.8)
 
 
 def test_prediction_frame_no_probabilities():
     labels = np.array(["hot"])
-    df = classification_prediction_frame(labels, None, "label", ["cold", "hot"], pd.RangeIndex(1))
+    df = classification_prediction_frame(
+        labels, None, "label", ["cold", "hot"], pd.RangeIndex(1)
+    )
     assert list(df.columns) == ["label"]
 
 
@@ -173,7 +183,9 @@ def test_metrics_includes_log_loss_when_probabilities_given():
     y_true = pd.Series(["a", "a", "b", "b"])
     y_pred = pd.Series(["a", "b", "b", "a"])
     proba = np.array([[0.9, 0.1], [0.4, 0.6], [0.2, 0.8], [0.6, 0.4]])
-    metrics = classification_metrics(y_true, y_pred, probabilities=proba, classes=["a", "b"])
+    metrics = classification_metrics(
+        y_true, y_pred, probabilities=proba, classes=["a", "b"]
+    )
     assert "log_loss" in metrics
 
 

@@ -44,7 +44,11 @@ def test_init_run_calls_wandb_init_with_correct_args(monkeypatch):
     monkeypatch.setattr(wandb_module, "_wandb", mock_wandb)
 
     cfg = WandbConfig(
-        project="proj", entity="ent", model_name="XGBoost", target="label", res_dir="/tmp/r"
+        project="proj",
+        entity="ent",
+        model_name="XGBoost",
+        target="label",
+        res_dir="/tmp/r",
     )
     cfg.init_run(name="run1", group="sweep")
 
@@ -60,7 +64,9 @@ def test_init_run_omits_reinit_when_none(monkeypatch):
     mock_wandb = MagicMock()
     monkeypatch.setattr(wandb_module, "_wandb", mock_wandb)
 
-    cfg = WandbConfig(project="p", entity=None, model_name="m", target="t", res_dir="/r")
+    cfg = WandbConfig(
+        project="p", entity=None, model_name="m", target="t", res_dir="/r"
+    )
     cfg.init_run(name="n", group="g", reinit=None)
 
     kwargs = mock_wandb.init.call_args.kwargs
@@ -71,7 +77,9 @@ def test_init_run_includes_reinit_when_provided(monkeypatch):
     mock_wandb = MagicMock()
     monkeypatch.setattr(wandb_module, "_wandb", mock_wandb)
 
-    cfg = WandbConfig(project="p", entity=None, model_name="m", target="t", res_dir="/r")
+    cfg = WandbConfig(
+        project="p", entity=None, model_name="m", target="t", res_dir="/r"
+    )
     cfg.init_run(name="n", group="g", reinit="finish_previous")
 
     kwargs = mock_wandb.init.call_args.kwargs
@@ -82,7 +90,9 @@ def test_init_run_dir_override_used_when_provided(monkeypatch):
     mock_wandb = MagicMock()
     monkeypatch.setattr(wandb_module, "_wandb", mock_wandb)
 
-    cfg = WandbConfig(project="p", entity=None, model_name="m", target="t", res_dir="/default")
+    cfg = WandbConfig(
+        project="p", entity=None, model_name="m", target="t", res_dir="/default"
+    )
     cfg.init_run(name="n", group="g", dir_override="/override")
 
     kwargs = mock_wandb.init.call_args.kwargs
@@ -104,7 +114,9 @@ def test_create_eval_report_calls_save_and_returns_url(monkeypatch):
     mock_report.url = "https://wandb.ai/report/123"
     mock_wr.Report.return_value = mock_report
 
-    cfg = WandbConfig(project="proj", entity="ent", model_name="m", target="t", res_dir="/r")
+    cfg = WandbConfig(
+        project="proj", entity="ent", model_name="m", target="t", res_dir="/r"
+    )
     url = create_eval_report(cfg, run_id="abc123", target_cols=["label"])
 
     mock_report.save.assert_called_once()
@@ -122,7 +134,9 @@ def test_create_eval_report_uses_api_default_entity_when_none(monkeypatch):
     mock_report.url = "https://wandb.ai/report/x"
     mock_wr.Report.return_value = mock_report
 
-    cfg = WandbConfig(project="proj", entity=None, model_name="m", target="t", res_dir="/r")
+    cfg = WandbConfig(
+        project="proj", entity=None, model_name="m", target="t", res_dir="/r"
+    )
     create_eval_report(cfg, run_id="run1", target_cols=["label"])
 
     # Verify Report was constructed with the resolved entity
@@ -142,7 +156,9 @@ def test_create_eval_report_slash_in_target_replaced(monkeypatch):
     mock_wr.Report.return_value = mock_report
     mock_wr.MediaBrowser = MagicMock(side_effect=lambda **kw: kw)
 
-    cfg = WandbConfig(project="p", entity="ent", model_name="m", target="t", res_dir="/r")
+    cfg = WandbConfig(
+        project="p", entity="ent", model_name="m", target="t", res_dir="/r"
+    )
     create_eval_report(cfg, run_id="r", target_cols=["H3K4me3/input"])
 
     # Check that MediaBrowser was called with "_" instead of "/"
