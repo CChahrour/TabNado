@@ -925,6 +925,8 @@
 <li><code>evaluate/metrics.json</code>: Evaluation metrics</li>
 <li><code>evaluate/predictions.parquet</code>: predictions over test chromosome</li>
 <li><code>figures/scatter_test.png</code>: True vs predicted scatter</li>
+<li><code>figures/roc_curve_&lt;target&gt;.png</code>: ROC curve for classification runs</li>
+<li><code>evaluate/roc_auc.csv</code>: ROC AUC summary for classification runs</li>
 <li><code>evaluate/embeddings_umap.parquet</code>: UMAP embedding table</li>
 <li><code>figures/embeddings_umap.png</code>: UMAP figure</li>
 </ul>
@@ -932,6 +934,8 @@
 <ul>
 <li><code>shap/shap_mean_abs.csv</code>: Mean absolute SHAP by feature and target</li>
 <li><code>figures/shap_clustermap.png</code>: Mean |SHAP| heatmap across cofactors and targets</li>
+<li><code>figures/shap_stacked_bar.png</code>: Stacked mean |SHAP| bar plot by cofactor and output</li>
+<li><code>shap/shap_stacked_bar_data.csv</code>: Data used for the stacked SHAP bar plot</li>
 <li><code>shap/spatial_shap_by_offset_&lt;target&gt;.csv</code>: Spatial SHAP summary by genomic offset per target</li>
 <li><code>figures/shap_spatial_heatmap_&lt;target&gt;.png</code>: Spatial SHAP heatmap (cofactor × offset) per target</li>
 <li><code>figures/shap_offset_line_&lt;target&gt;.png</code>: SHAP importance profile by genomic offset per target</li>
@@ -939,7 +943,7 @@
 <h2 id="logs">Logs<a class="headerlink" href="#logs" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>&lt;PROJECT&gt;.log</code>: Run-level pipeline log</li>
-<li><code>logging/</code>: TensorBoard files (if enabled)</li>
+<li><code>logs/</code>: TensorBoard files (if enabled)</li>
 </ul>
 
 
