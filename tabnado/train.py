@@ -536,6 +536,12 @@ def _train_gandalf(
     if task == "classification":
         require_single_classification_target(target_cols)
 
+    if eval_data is None or (hasattr(eval_data, "__len__") and len(eval_data) == 0):
+        logger.warning(
+            "eval_data is empty — deriving a validation split from train_data"
+        )
+        train_data, eval_data = _derive_validation_split(train_data, target_cols, task)
+
     logging_dir = LOGGING_DIR or os.path.join(RES_DIR, "logging")
     use_tensorboard = LOGGING == "tensorboard"
     if use_tensorboard:

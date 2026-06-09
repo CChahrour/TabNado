@@ -764,7 +764,11 @@ def _gandalf_sweep_train(
     selected_cols = feature_cols + sweep_target_cols
 
     train_view = train_data[selected_cols]
-    eval_view = eval_data[selected_cols]
+    eval_view = (
+        eval_data[selected_cols]
+        if eval_data is not None and len(eval_data) > 0
+        else pd.DataFrame(columns=selected_cols)
+    )
     test_view = test_data[selected_cols]
 
     logger.info(
@@ -859,9 +863,26 @@ def _gandalf_sweep_train(
             f"Sweep train size: {len(sweep_train_data):,} ({SWEEP_FRACTION:.0%} of full)"
         )
 
+        # Early-stopping requires a non-empty validation set for `valid_*` metrics.
+        # When no eval chromosomes are configured, carve a temporary split.
+        if len(eval_view) == 0:
+            from sklearn.model_selection import train_test_split as _tts
+
+            stratify = None
+            if task == "classification":
+                col = sweep_target_cols[0]
+                counts = sweep_train_data[col].value_counts()
+                if len(counts) >= 2 and int(counts.min()) >= 2:
+                    stratify = sweep_train_data[col].astype(str)
+            sweep_train_data, fit_eval = _tts(
+                sweep_train_data, test_size=0.2, random_state=42, stratify=stratify
+            )
+        else:
+            fit_eval = eval_view
+
         model.fit(
             train=sweep_train_data,
-            validation=eval_view,
+            validation=fit_eval,
             callbacks=[LoguruProgressCallback()],
         )
         # Log macro metrics to wandb if enabled
