@@ -628,17 +628,29 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#common-keys" class="md-nav__link">
+  <a href="#optional-keys" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Common Keys
+        Optional Keys
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional Keys">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#model-and-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model and task
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#genomicdata-keys" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -646,6 +658,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -869,17 +886,29 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#common-keys" class="md-nav__link">
+  <a href="#optional-keys" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Common Keys
+        Optional Keys
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional Keys">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#model-and-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model and task
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#genomicdata-keys" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -887,6 +916,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -935,44 +969,155 @@
 <h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
 <p>Parameters are loaded from a YAML file passed via <code>--params</code> / <code>-p</code>.</p>
 <h2 id="required-keys">Required Keys<a class="headerlink" href="#required-keys" title="Permanent link">&para;</a></h2>
+<p>These four keys must be present — the pipeline will fail immediately if any is missing:</p>
 <ul>
-<li><code>target</code>: Target IP name (for example <code>MLLN</code>)</li>
-<li><code>model_name</code>: Model label in output project naming</li>
-<li><code>sweep_fraction</code>: Fraction of training rows used during sweep</li>
-<li><code>gtf_file</code>: GTF path</li>
-<li><code>eval_chr</code>: Evaluation chromosome</li>
-<li><code>test_chr</code>: Test chromosome</li>
+<li><code>dataset</code>: Path to the QuantNado xarray dataset</li>
+<li><code>model_name</code>: <code>gandalf</code>, <code>xgboost</code>, or <code>catboost</code> (case-insensitive)</li>
+<li><code>target</code>: Target IP name (e.g. <code>MLLN</code>)</li>
 <li><code>output_dir</code>: Base output root</li>
 </ul>
-<p>If any required key is missing, runtime will fail while loading params.</p>
-<h2 id="common-keys">Common Keys<a class="headerlink" href="#common-keys" title="Permanent link">&para;</a></h2>
-<ul>
-<li><code>n_sweeps</code>: Number of sweep runs</li>
-<li><code>logging</code>: <code>wandb</code> or <code>tensorboard</code> — wandb is supported by both backends; tensorboard is GANDALF only</li>
-</ul>
-<h2 id="genomicdata-keys">Genomic/Data Keys<a class="headerlink" href="#genomicdata-keys" title="Permanent link">&para;</a></h2>
-<ul>
-<li><code>dataset</code>: QuantNado dataset path</li>
-<li><code>gtf_file</code>: GTF annotation file path</li>
-<li><code>windows_bed</code>: BED file of TSS windows — <strong>optional</strong>; auto-generated from GTF if omitted</li>
-<li><code>eval_chr</code>: Evaluation chromosome</li>
-<li><code>test_chr</code>: Test chromosome</li>
-<li><code>min_target</code>: Minimum target sample count</li>
-<li><code>min_features</code>: Minimum feature IP count</li>
-<li><code>exclude_ips</code>: List of IP names to exclude from modelling</li>
-<li><code>prefixes</code>: List of assay prefixes to include from sample names</li>
-<li><code>window_size</code>: Genomic window size around TSS in bp</li>
-<li><code>step_size</code>: Step size for sliding window in bp</li>
-<li><code>tile_size</code>: Size of each tile in bp; set larger than <code>step_size</code> for overlapping tiles</li>
-<li><code>chunk_size_rows</code>: <strong>optional</strong> — limit the number of rows processed per chunk during signal extraction; useful for memory-constrained environments. Defaults to the full dataset if omitted.</li>
-</ul>
+<h2 id="optional-keys">Optional Keys<a class="headerlink" href="#optional-keys" title="Permanent link">&para;</a></h2>
+<p>All other keys have defaults and can be omitted.</p>
+<h3 id="model-and-task">Model and task<a class="headerlink" href="#model-and-task" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Values</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>logging</code></td>
+<td><code>wandb</code></td>
+<td><code>wandb</code>, <code>tensorboard</code></td>
+<td>Experiment logging backend</td>
+</tr>
+<tr>
+<td><code>task</code></td>
+<td><code>auto</code></td>
+<td><code>auto</code>, <code>classification</code>, <code>regression</code></td>
+<td><code>auto</code> infers from the target column dtype</td>
+</tr>
+<tr>
+<td><code>n_sweeps</code></td>
+<td><code>0</code></td>
+<td>integer</td>
+<td>Number of Optuna trials; <code>0</code> skips the sweep and uses built-in defaults</td>
+</tr>
+<tr>
+<td><code>sweep_fraction</code></td>
+<td><code>0.0</code></td>
+<td>float 0–1</td>
+<td>Fraction of training rows used per sweep trial</td>
+</tr>
+<tr>
+<td><code>early_stopping</code></td>
+<td><code>10</code></td>
+<td>integer</td>
+<td>Early stopping rounds (XGBoost and CatBoost)</td>
+</tr>
+<tr>
+<td><code>class_balance</code></td>
+<td><code>none</code></td>
+<td><code>none</code>, <code>undersample</code>, <code>oversample</code>, <code>smote</code></td>
+<td>Resampling strategy applied to training data before fitting</td>
+</tr>
+<tr>
+<td><code>catboost_search_space</code></td>
+<td><code>extended</code></td>
+<td><code>extended</code>, <code>notebook</code></td>
+<td>CatBoost Optuna search space; <code>notebook</code> is smaller and faster</td>
+</tr>
+<tr>
+<td><code>entity</code></td>
+<td>—</td>
+<td>string</td>
+<td>W&amp;B entity (team or username); defaults to your W&amp;B account default</td>
+</tr>
+</tbody>
+</table>
+<h3 id="genomicdata-keys">Genomic/Data Keys<a class="headerlink" href="#genomicdata-keys" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>eval_chr</code></td>
+<td><code>chr8</code></td>
+<td>Validation chromosome(s); can be blank, a string, or a list</td>
+</tr>
+<tr>
+<td><code>test_chr</code></td>
+<td><code>chr9</code></td>
+<td>Test chromosome(s); same format as <code>eval_chr</code></td>
+</tr>
+<tr>
+<td><code>gtf_file</code></td>
+<td>—</td>
+<td>GTF annotation path; required if <code>windows_bed</code> is not provided</td>
+</tr>
+<tr>
+<td><code>windows_bed</code></td>
+<td>auto</td>
+<td>BED file of TSS windows; auto-generated from GTF if omitted</td>
+</tr>
+<tr>
+<td><code>window_size</code></td>
+<td><code>2000</code></td>
+<td>Genomic window size around TSS in bp</td>
+</tr>
+<tr>
+<td><code>step_size</code></td>
+<td><code>250</code></td>
+<td>Sliding window step size in bp</td>
+</tr>
+<tr>
+<td><code>tile_size</code></td>
+<td><code>1000</code></td>
+<td>Tile size in bp; set larger than <code>step_size</code> for overlapping tiles</td>
+</tr>
+<tr>
+<td><code>min_target</code></td>
+<td><code>1.0</code></td>
+<td>Minimum target sample count</td>
+</tr>
+<tr>
+<td><code>min_features</code></td>
+<td><code>1</code></td>
+<td>Minimum feature IP count</td>
+</tr>
+<tr>
+<td><code>prefixes</code></td>
+<td><code>[]</code></td>
+<td>Assay prefixes to include (e.g. <code>[ChIP, CAT, CM]</code>); empty = all</td>
+</tr>
+<tr>
+<td><code>exclude_ips</code></td>
+<td><code>[]</code></td>
+<td>IP names to exclude from modelling</td>
+</tr>
+<tr>
+<td><code>chunk_size_rows</code></td>
+<td><code>1000000</code></td>
+<td>Rows per chunk during signal extraction; reduce if memory-constrained</td>
+</tr>
+</tbody>
+</table>
 <h2 id="sample-naming-convention">Sample Naming Convention<a class="headerlink" href="#sample-naming-convention" title="Permanent link">&para;</a></h2>
 <p>Sample names in the QuantNado dataset must follow a specific format to be parsed correctly:</p>
 <div class="highlight"><pre><span></span><code>{ASSAY}-{CELL_TYPE}_{IP}_{REPLICATE}
 </code></pre></div>
-<p><strong>Assay types (required)</strong>: Only samples with prefixes listed in <code>prefixes</code> are included. Defaults are <code>CAT</code>, <code>ChIP</code>, and <code>CM</code>.<br />
-<strong>Cell type</strong>: Multi-part names can use dashes within the cell type (trailing digits are stripped).<br />
-<strong>IP</strong>: Immunoprecipitation target name (e.g., <code>MLLN</code>, <code>H3K4me3</code>, etc.).<br />
+<p><strong>Assay types</strong>: Only samples with prefixes listed in <code>prefixes</code> are included. Defaults are <code>CAT</code>, <code>ChIP</code>, and <code>CM</code>.
+<strong>Cell type</strong>: Multi-part names can use dashes within the cell type (trailing digits are stripped).
+<strong>IP</strong>: Immunoprecipitation target name (e.g. <code>MLLN</code>, <code>H3K4me3</code>).
 <strong>Replicate</strong>: Numeric replicate identifier.</p>
 <p><strong>Example valid names</strong>:
 - <code>ChIP-K562_MLLN_1</code> — ChIP assay, K562 cells, MLLN IP, rep 1
@@ -980,13 +1125,13 @@
 - <code>CM-THP1_CEBPD_3</code> — CUT&amp;RUN (CM) assay, THP1 cells, CEBPD IP, rep 3</p>
 <p>IPs listed in <code>exclude_ips</code> (default: <code>["AF4C", "MLLC"]</code>) will be filtered out.</p>
 <h2 id="derived-runtime-paths">Derived Runtime Paths<a class="headerlink" href="#derived-runtime-paths" title="Permanent link">&para;</a></h2>
-<p>At runtime the code computes:</p>
+<p>At runtime the following paths are computed from <code>output_dir</code>, <code>model_name</code>, and <code>target</code>:</p>
 <ul>
 <li><code>PROJECT = &lt;model_name&gt;_&lt;target&gt;</code></li>
 <li><code>RES_DIR = &lt;output_dir&gt;/&lt;PROJECT&gt;</code></li>
 <li><code>FIG_DIR = &lt;RES_DIR&gt;/figures</code></li>
-<li><code>LOGGING_DIR = &lt;RES_DIR&gt;/logs</code> when TensorBoard logging is used</li>
-<li><code>DATA_DIR = &lt;RES_DIR&gt;/data</code></li>
+<li><code>LOGGING_DIR = &lt;RES_DIR&gt;/logs</code></li>
+<li><code>DATA_DIR = &lt;RES_DIR&gt;/dataset</code></li>
 <li><code>EVAL_DIR = &lt;RES_DIR&gt;/evaluate</code></li>
 </ul>
 

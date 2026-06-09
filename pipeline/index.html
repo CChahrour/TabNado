@@ -644,6 +644,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#shap-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SHAP stage
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -930,6 +941,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#shap-stage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SHAP stage
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -970,33 +992,54 @@
 <h2 id="stages">Stages<a class="headerlink" href="#stages" title="Permanent link">&para;</a></h2>
 <h3 id="data-stage">Data stage<a class="headerlink" href="#data-stage" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Loads dataset store</li>
-<li>Filters samples into targets and features</li>
-<li>Builds cached train/eval/test parquet tables</li>
+<li>Loads the QuantNado xarray dataset</li>
+<li>Filters samples into targets and features based on <code>prefixes</code>, <code>exclude_ips</code>, <code>min_target</code>, <code>min_features</code></li>
+<li>Tiles TSS windows (or loads a user-supplied BED file)</li>
+<li>Builds cached train/eval/test parquet tables split by chromosome</li>
 </ul>
 <h3 id="sweep-stage">Sweep stage<a class="headerlink" href="#sweep-stage" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Runs local or W&amp;B sweeps</li>
-<li>Optimizes model hyperparameters</li>
-<li>Saves <code>best_hyperparameters.json</code></li>
+<li>Runs an Optuna hyperparameter search using the configured backend</li>
+<li>Each trial trains on a fraction of the training data (<code>sweep_fraction</code>) and scores on eval/test</li>
+<li>Saves <code>best_hyperparameters.json</code>; if <code>n_sweeps: 0</code> the sweep is skipped and built-in defaults are used</li>
 </ul>
 <h3 id="train-stage">Train stage<a class="headerlink" href="#train-stage" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Trains final model with best hyperparameters</li>
-<li>Saves model and checkpoints</li>
+<li>Trains the final model with best hyperparameters on the full training set</li>
+<li>If <code>eval_chr</code> is blank, a validation split is derived automatically from training data</li>
+<li>Saves model and checkpoints to <code>final_model/</code></li>
 </ul>
 <h3 id="evaluate-stage">Evaluate stage<a class="headerlink" href="#evaluate-stage" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Computes regression metrics</li>
-<li>Saves scatter and UMAP outputs</li>
-<li>Runs SHAP analysis and plots</li>
+<li>Runs predictions on the test chromosome</li>
+<li>Computes and saves metrics, scatter plots (regression) or ROC/confusion matrix (classification)</li>
+<li>Generates UMAP embeddings</li>
+</ul>
+<h3 id="shap-stage">SHAP stage<a class="headerlink" href="#shap-stage" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Computes SHAP values for all features using the trained model</li>
+<li>Produces per-target summary plots and spatial SHAP analysis (when offset information is available)</li>
 </ul>
 <h2 id="logging">Logging<a class="headerlink" href="#logging" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Per-run text log: <code>&lt;RES_DIR&gt;/&lt;PROJECT&gt;.log</code></li>
-<li>TensorBoard logging directory: <code>&lt;RES_DIR&gt;/logging</code> when <code>logging: tensorboard</code></li>
-<li>W&amp;B local directory: <code>&lt;RES_DIR&gt;</code> when <code>logging: wandb</code></li>
-</ul>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>logging: wandb</code></td>
+<td>Runs logged to W&B; <code>WANDB_DIR</code> set to <code>&lt;RES_DIR&gt;</code></td>
+</tr>
+<tr>
+<td><code>logging: tensorboard</code></td>
+<td>TensorBoard events written to <code>&lt;RES_DIR&gt;/logs/</code></td>
+</tr>
+</tbody>
+</table>
+<p>Per-run text log is always written to <code>&lt;RES_DIR&gt;/&lt;PROJECT&gt;.log</code>.</p>
 
 
 

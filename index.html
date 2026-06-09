@@ -890,27 +890,27 @@
     <img src="assets/tabnado.png" alt="TabNado logo" width="220" />
 </p>
 
-<p>Predicts binding from epigenomic cofactors (ChIP-seq, CUT&amp;TAG, CUT&amp;RUN) over tiled TSS windows or user-defined BED regions, with support for both GANDALF (neural tabular) and XGBoost backends.</p>
+<p>Predicts binding from epigenomic cofactors (ChIP-seq, CUT&amp;TAG, CUT&amp;RUN) over tiled TSS windows or user-defined BED regions. Supports classification and regression tasks with three model backends: GANDALF (neural tabular), XGBoost, and CatBoost.</p>
 <p>Uses datasets prepared with <a href="https://github.com/Milne-Group/QuantNado">QuantNado</a> via <a href="https://github.com/Milne-Group/SeqNado">SeqNado</a>.</p>
 <h2 id="what-it-does">What It Does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h2>
 <ol>
-<li>Builds train/eval/test tabular datasets from genomic signal.</li>
-<li>Runs hyperparameter sweeps (GANDALF or XGBoost backend).</li>
+<li>Builds train/eval/test tabular datasets from genomic signal split by chromosome.</li>
+<li>Runs Optuna hyperparameter sweeps with the configured backend (GANDALF, XGBoost, or CatBoost).</li>
 <li>Trains a final model with best hyperparameters.</li>
-<li>Evaluates predictions and exports metrics/figures.</li>
-<li>Computes SHAP feature importance outputs.</li>
+<li>Evaluates predictions and exports metrics and figures.</li>
+<li>Computes SHAP feature importance and spatial SHAP outputs.</li>
 </ol>
 <h2 id="pipeline-at-a-glance">Pipeline at a Glance<a class="headerlink" href="#pipeline-at-a-glance" title="Permanent link">&para;</a></h2>
 <ol>
-<li>Data prep and split: chr8 for eval, chr9 for test.</li>
-<li>Sweep stage: identifies best hyperparameters.</li>
-<li>Train stage: produces <code>final_model/</code>.</li>
-<li>Evaluate stage: metrics, scatter, UMAP artifacts.</li>
-<li>SHAP stage: feature importance and spatial SHAP artifacts.</li>
+<li><strong>Data</strong> — normalise signal, filter samples, split by chromosome.</li>
+<li><strong>Sweep</strong> — Optuna search → <code>best_hyperparameters.json</code>.</li>
+<li><strong>Train</strong> — final fit → <code>final_model/</code>.</li>
+<li><strong>Evaluate</strong> — metrics, scatter/ROC, UMAP → <code>evaluate/</code> and <code>figures/</code>.</li>
+<li><strong>SHAP</strong> — feature importance and spatial SHAP → <code>shap/</code> and <code>figures/</code>.</li>
 </ol>
 <h2 id="main-entry-points">Main Entry Points<a class="headerlink" href="#main-entry-points" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Initialise the parameters: <code>tabnado-init</code></li>
+<li>Initialise parameters: <code>tabnado-init</code></li>
 <li>Full pipeline: <code>tabnado-run --params params.yaml</code></li>
 <li>Data only: <code>tabnado-data --params params.yaml</code></li>
 <li>Sweep only: <code>tabnado-sweep --params params.yaml</code></li>
