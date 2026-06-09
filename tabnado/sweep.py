@@ -94,12 +94,8 @@ def _sweep_xgboost(
     def _suggest_xgboost_params(trial) -> dict[str, Any]:
         return {
             "max_depth": trial.suggest_categorical("max_depth", [3, 4, 5, 6, 8]),
-            "learning_rate": trial.suggest_float(
-                "learning_rate", 0.01, 0.2, log=True
-            ),
-            "n_estimators": trial.suggest_categorical(
-                "n_estimators", [300, 600, 1000]
-            ),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
+            "n_estimators": trial.suggest_categorical("n_estimators", [300, 600, 1000]),
             "min_child_weight": trial.suggest_categorical(
                 "min_child_weight", [1, 3, 5, 10]
             ),
@@ -116,7 +112,9 @@ def _sweep_xgboost(
         }
 
     def _bail_out(best_hp: dict, reason: str) -> dict:
-        logger.warning(f"XGBoost HP sweep skipped: {reason} Using deterministic defaults.")
+        logger.warning(
+            f"XGBoost HP sweep skipped: {reason} Using deterministic defaults."
+        )
         out_path = Path(RES_DIR) / "best_hyperparameters.json"
         with open(out_path, "w") as f:
             json.dump(json_safe(best_hp), f, indent=2)
@@ -137,9 +135,7 @@ def _sweep_xgboost(
     if task == "classification":
         encoded = encode_classification_target(train_data, target_cols)
         objective_name = (
-            "binary:logistic"
-            if encoded.problem_type == "binary"
-            else "multi:softprob"
+            "binary:logistic" if encoded.problem_type == "binary" else "multi:softprob"
         )
         base_kwargs = {
             "objective": objective_name,
@@ -168,7 +164,10 @@ def _sweep_xgboost(
         )
 
         if len(X_tune) < 2 or n_sweeps <= 0:
-            return _bail_out(_default_best_hp(param_dist_for_defaults), "using deterministic defaults.")
+            return _bail_out(
+                _default_best_hp(param_dist_for_defaults),
+                "using deterministic defaults.",
+            )
 
         unique_classes, class_counts = np.unique(y_tune, return_counts=True)
         if len(unique_classes) < 2:
@@ -246,7 +245,9 @@ def _sweep_xgboost(
                 f"{len(X_tune)} samples is too few for stable {cv_desc}.",
             )
 
-        scoring = make_scorer(r2_score, greater_is_better=True, multioutput="uniform_average")
+        scoring = make_scorer(
+            r2_score, greater_is_better=True, multioutput="uniform_average"
+        )
         metric_name = "R2"
         base_kwargs = {
             "objective": "reg:squarederror",
@@ -454,9 +455,7 @@ def _suggest_catboost_params(trial, search_space: str = "extended") -> dict[str,
         params["learning_rate"] = trial.suggest_float(
             "learning_rate", 0.01, 0.2, log=True
         )
-        params["iterations"] = trial.suggest_categorical(
-            "iterations", [300, 600, 1000]
-        )
+        params["iterations"] = trial.suggest_categorical("iterations", [300, 600, 1000])
         params["l2_leaf_reg"] = trial.suggest_float("l2_leaf_reg", 1.0, 10.0, log=True)
         params["random_strength"] = trial.suggest_float("random_strength", 0.0, 1.0)
 
@@ -685,6 +684,7 @@ def _sweep_catboost(
 # ---------------------------------------------------------------------------
 # GANDALF (PyTorch Tabular, wandb-driven sweeps)
 # ---------------------------------------------------------------------------
+
 
 def _center_window_columns(columns: list[str]) -> list[str]:
     """Return only TSS-centered columns (suffix `_0`)."""
@@ -1039,7 +1039,6 @@ def _sweep_gandalf(
 
     _save_best_hp(best_hp, RES_DIR)
     return best_hp
-
 
 
 # ---------------------------------------------------------------------------

@@ -246,7 +246,8 @@ def get_samples(
             )
         )
     factors["cell_type"] = (
-        factors["sample_id"].str.split("_")
+        factors["sample_id"]
+        .str.split("_")
         .str[0]
         .str.split("-")
         .str[1:]
@@ -382,7 +383,9 @@ def balance_classes(
         sampler = RandomOverSampler(random_state=seed)
     else:
         smallest_class = int(y.value_counts().min())
-        sampler = SMOTE(random_state=seed, k_neighbors=max(1, min(5, smallest_class - 1)))
+        sampler = SMOTE(
+            random_state=seed, k_neighbors=max(1, min(5, smallest_class - 1))
+        )
 
     before = y.value_counts().to_dict()
     X_res, y_res = sampler.fit_resample(X, y)
@@ -494,7 +497,9 @@ def load_or_build_datasets(
 
     eval_chrs = [eval_chr] if isinstance(eval_chr, str) else list(eval_chr)
     test_chrs = [test_chr] if isinstance(test_chr, str) else list(test_chr)
-    logger.info(f"Splitting by chromosome: eval={eval_chrs or 'none'}, test={test_chrs}")
+    logger.info(
+        f"Splitting by chromosome: eval={eval_chrs or 'none'}, test={test_chrs}"
+    )
     contigs = signal_df.index.get_level_values("contig")
     train_data = signal_df[~contigs.isin(eval_chrs + test_chrs)]
     eval_data = signal_df[contigs.isin(eval_chrs)]
@@ -638,7 +643,9 @@ def _infer_parquet_feature_cols(df: pd.DataFrame, target: str) -> list[str]:
 
 def _contigs_from_model_frame(df: pd.DataFrame) -> pd.Series:
     if isinstance(df.index, pd.MultiIndex) and "contig" in df.index.names:
-        return pd.Series(df.index.get_level_values("contig"), index=df.index).astype(str)
+        return pd.Series(df.index.get_level_values("contig"), index=df.index).astype(
+            str
+        )
 
     for col in ("contig", "Chromosome"):
         if col in df.columns:
@@ -753,7 +760,13 @@ def load_parquet_data(
     data = _load_parquet_model_frame(DATASET, TARGET)
     target_cols = [TARGET]
     feature_cols = _infer_parquet_feature_cols(data, TARGET)
-    data = _scale_parquet_features(data, feature_cols, minmax_scale=minmax_scale, clip_signal=clip_signal, uq_normalise=uq_normalise)
+    data = _scale_parquet_features(
+        data,
+        feature_cols,
+        minmax_scale=minmax_scale,
+        clip_signal=clip_signal,
+        uq_normalise=uq_normalise,
+    )
 
     eval_chrs = [EVAL_CHR] if isinstance(EVAL_CHR, str) else list(EVAL_CHR)
     test_chrs = [TEST_CHR] if isinstance(TEST_CHR, str) else list(TEST_CHR)

@@ -12,8 +12,8 @@ from tabnado.params import PipelineParams
 # XGBoost pipeline tests
 # ============================================================
 
-TEST_DIR = Path(__file__).parent
-XGB_PARAMS_PATH = TEST_DIR / "data" / "params_test_xgboost.yaml"
+TESTS_DIR = Path(__file__).parent.parent
+XGB_PARAMS_PATH = TESTS_DIR / "data" / "params_test_xgboost.yaml"
 
 
 @pytest.fixture(scope="module")

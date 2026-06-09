@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+TESTS_DIR = Path(__file__).parent.parent
+
 
 def test_gandalf_pipeline(coverage_path, params, loaded_data):
     """Test the full Gandalf pipeline: data loading, hyperparameter sweep, training, evaluation, and SHAP analysis."""
@@ -11,7 +13,7 @@ def test_gandalf_pipeline(coverage_path, params, loaded_data):
 
     old_argv = sys.argv[:]
     try:
-        params_path = Path(__file__).parent / "data" / "params_gandalf_test.yaml"
+        params_path = TESTS_DIR / "data" / "params_gandalf_test.yaml"
         sys.argv = ["tabnado-run", "-p", str(params_path)]
         cli_run()
     finally:

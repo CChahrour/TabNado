@@ -4,16 +4,39 @@ on:
   push:
 
 jobs:
-  test:
+  unit:
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: astral-sh/setup-uv@v2
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Run unit tests
+        run: uv run --python 3.12 pytest -vv -s -rA tests/unit
+
+  integration:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         test_target:
-          - tests/test_cli.py
-          - tests/test_peaks.py
-          - tests/test_pipeline_gandalf.py
-          - tests/test_pipeline_xgboost.py
+          - tests/integration/test_peaks.py
+          - tests/integration/test_pipeline_gandalf.py
+          - tests/integration/test_pipeline_xgboost.py
     env:
       UV_PYTHON: "3.12"
       PYTHONUNBUFFERED: "1"

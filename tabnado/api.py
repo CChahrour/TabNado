@@ -376,9 +376,7 @@ def run_pipeline(params_path: Path | str | None = None) -> None:
         wandb_run=_eval_wandb_run,
     )
     logger.info(
-        "[stage:shap] END shap analysis in {:.2f}s".format(
-            perf_counter() - stage_start
-        )
+        "[stage:shap] END shap analysis in {:.2f}s".format(perf_counter() - stage_start)
     )
 
     # W&B report
@@ -765,7 +763,9 @@ def run_shap(params_path: ParamsPath = None) -> None:
     )
 
 
-def write_params_template(path: Path | str = "params.yaml", force: bool = False) -> Path:
+def write_params_template(
+    path: Path | str = "params.yaml", force: bool = False
+) -> Path:
     """Write a starter params YAML template to ``path``.
 
     Mirrors the ``tabnado-init`` CLI entry point. Writes

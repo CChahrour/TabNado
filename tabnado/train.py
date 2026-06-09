@@ -525,7 +525,11 @@ def _train_gandalf(
     from pytorch_tabular.models import GANDALFConfig
 
     from tabnado.sweep import _make_data_config
-    from tabnado.utils import LoguruProgressCallback, log_macro, require_single_classification_target
+    from tabnado.utils import (
+        LoguruProgressCallback,
+        log_macro,
+        require_single_classification_target,
+    )
 
     logger.info("Training final GANDALF model with best hyperparameters")
     task = resolve_task(TASK, train_data, target_cols)
@@ -669,7 +673,9 @@ def _derive_validation_split(
         if len(class_counts) >= 2 and int(class_counts.min()) >= 2:
             stratify = target
 
-    return train_test_split(train_data, test_size=0.2, random_state=seed, stratify=stratify)
+    return train_test_split(
+        train_data, test_size=0.2, random_state=seed, stratify=stratify
+    )
 
 
 def train_model(

@@ -8,9 +8,9 @@ from tabnado.params import PipelineParams
 # Peaks / BED region pathway test
 # ============================================================
 
-TEST_DIR = Path(__file__).parent
-PEAKS_BED = TEST_DIR / "data" / "test_peaks.bed"
-PEAKS_PARAMS_PATH = TEST_DIR / "data" / "params_test.yaml"
+TESTS_DIR = Path(__file__).parent.parent
+PEAKS_BED = TESTS_DIR / "data" / "test_peaks.bed"
+PEAKS_PARAMS_PATH = TESTS_DIR / "data" / "params_test.yaml"
 
 
 @pytest.fixture()

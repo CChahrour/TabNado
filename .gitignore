@@ -1,20 +1,16 @@
 # Python-generated files
 __pycache__/
+.coverage
+.pytest_cache
+.ruff_cache
+*.egg-info
 *.py[oc]
 build/
 dist/
 wheels/
-*.egg-info
-.pytest_cache
-.ruff_cache
 
 # Virtual environments
 .venv
-
-# Claude-related files
-.claude
-CLAUDE.md
-planning.md
 
 # System files
 .DS_Store
@@ -24,9 +20,9 @@ planning.md
 .pt_tmp
 
 # Output files
+*.log
+model/
+params.yaml
 site/
 test_output/
 wandb/
-params.yaml
-*.log
-model/

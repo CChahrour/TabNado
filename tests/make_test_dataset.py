@@ -59,13 +59,17 @@ def _make_sample_zarr(
     meta = root.require_group("metadata")
     completed = meta.create_array("completed", shape=(1,), dtype=bool, fill_value=False)
     completed[0] = True
-    total_reads = meta.create_array("total_reads", shape=(1,), dtype=np.int64, fill_value=0)
+    total_reads = meta.create_array(
+        "total_reads", shape=(1,), dtype=np.int64, fill_value=0
+    )
     total_reads[0] = int(rng.integers(500_000, 2_000_000))
     mean_read_length = meta.create_array(
         "mean_read_length", shape=(1,), dtype=np.float32, fill_value=np.nan
     )
     mean_read_length[0] = np.float32(100.0)
-    sparsity = meta.create_array("sparsity", shape=(1,), dtype=np.float32, fill_value=np.nan)
+    sparsity = meta.create_array(
+        "sparsity", shape=(1,), dtype=np.float32, fill_value=np.nan
+    )
     sparsity[0] = np.float32(rng.uniform(20, 80))
 
     root.attrs.update(

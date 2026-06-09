@@ -585,7 +585,9 @@ def _gandalf_shap_values(
 
     target_col = target_cols[0]
     if resolved_task == "classification":
-        classes = _infer_gandalf_class_names(final_model, shap_data, train_data, target_col)
+        classes = _infer_gandalf_class_names(
+            final_model, shap_data, train_data, target_col
+        )
     else:
         classes = []
     return sv_list, target_col, classes

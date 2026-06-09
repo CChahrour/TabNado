@@ -49,6 +49,7 @@ docs = [
 ]
 test = [
     "pytest>=9.0.3",
+    "pytest-cov",
     "pytest-xdist",
     "pre-commit",
 ]
