@@ -294,7 +294,9 @@ def _plot_spatial_shap(
         ax.axvline(x=0, color="black", linestyle="--", alpha=0.5, label="TSS center")
         ax.set_xlabel("Offset from TSS (bp)")
         ax.set_ylabel("Mean |SHAP|")
-        ax.set_title(f"Genomic Distance Importance Profile — {target_col} ({model_type.upper()})")
+        ax.set_title(
+            f"Genomic Distance Importance Profile — {target_col} ({model_type.upper()})"
+        )
         ax.grid(True, alpha=0.3)
         ax.legend(
             fontsize=7, bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0
@@ -343,7 +345,9 @@ def _plot_clustermap(
     g.ax_heatmap.set_xticklabels(
         g.ax_heatmap.get_xticklabels(), fontsize=9, rotation=30, ha="right"
     )
-    g.figure.suptitle(f"Mean |SHAP| per cofactor ({model_type.upper()})", y=1.06, fontsize=11)
+    g.figure.suptitle(
+        f"Mean |SHAP| per cofactor ({model_type.upper()})", y=1.06, fontsize=11
+    )
     # Add horizontal colorbar between title and heatmap using heatmap axes position
     g.figure.canvas.draw()
     hm_pos = g.ax_heatmap.get_position()
@@ -423,7 +427,9 @@ def plot_shap_summary_per_class(
             show=False,
         )
         plt.savefig(class_path, bbox_inches="tight", dpi=120)
-        plt.title(f"SHAP Summary for {target_col} = {class_name} ({model_type.upper()})")
+        plt.title(
+            f"SHAP Summary for {target_col} = {class_name} ({model_type.upper()})"
+        )
         plt.close()
         logger.info(f"Saved SHAP summary plot for class '{class_name}': {class_path}")
         if wandb_run is not None:
@@ -734,7 +740,9 @@ def compute_shap(
             wandb_run=wandb_run,
         )
 
-    _plot_clustermap(mean_abs_shap, output_cols, FIG_DIR, wandb_run=wandb_run, model_type=model_type)
+    _plot_clustermap(
+        mean_abs_shap, output_cols, FIG_DIR, wandb_run=wandb_run, model_type=model_type
+    )
 
     plot_shap_stacked_bar(
         mean_abs_shap,

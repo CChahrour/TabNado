@@ -671,8 +671,9 @@ def _scale_parquet_features(
     minmax_scale: bool = True,
     clip_signal: bool = True,
     uq_normalise: bool = True,
+    log1p: bool = True,
 ) -> pd.DataFrame:
-    """Scale raw coverage-like parquet features; UQ, clipping, and MinMax are optional."""
+    """Scale raw coverage-like parquet features; UQ, clipping, log1p, and MinMax are optional."""
     if not feature_cols:
         return df
 
@@ -682,6 +683,10 @@ def _scale_parquet_features(
         arr = np.nan_to_num(arr, nan=0.0)
 
     finite = arr[np.isfinite(arr)]
+    if not log1p and not minmax_scale:
+        logger.info("Scaling parquet features (skipped — scale_data=False)")
+        return df
+
     if finite.size and finite.min() >= 0.0 and finite.max() <= 1.0:
         return df
 
@@ -705,7 +710,8 @@ def _scale_parquet_features(
             clip_at = np.nanpercentile(arr, 99.5, axis=0)
             clip_at = np.where(np.isfinite(clip_at), clip_at, 1.0)
             arr = np.clip(arr, None, clip_at)
-        arr = np.log1p(np.clip(arr, 0.0, None))
+        if log1p:
+            arr = np.log1p(np.clip(arr, 0.0, None))
 
     if minmax_scale:
         arr = MinMaxScaler().fit_transform(arr).astype(np.float32)
@@ -724,6 +730,7 @@ def load_parquet_data(
     minmax_scale: bool = True,
     clip_signal: bool = True,
     uq_normalise: bool = True,
+    log1p: bool = True,
 ):
     """Load precomputed parquet data and create train/eval/test chromosome splits."""
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
@@ -766,6 +773,7 @@ def load_parquet_data(
         minmax_scale=minmax_scale,
         clip_signal=clip_signal,
         uq_normalise=uq_normalise,
+        log1p=log1p,
     )
 
     eval_chrs = [EVAL_CHR] if isinstance(EVAL_CHR, str) else list(EVAL_CHR)
@@ -815,13 +823,15 @@ def load_data(
     TILE_SIZE: int = 100,
     CHUNK_SIZE_ROWS: int | None = None,
     MODEL_TYPE: str = "gandalf",
+    SCALE_DATA: bool = True,
     **_,
 ):
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
     gandalf = MODEL_TYPE.lower() == "gandalf"
-    minmax_scale = gandalf
-    clip_signal = gandalf
-    uq_normalise = gandalf
+    minmax_scale = gandalf and SCALE_DATA
+    clip_signal = gandalf and SCALE_DATA
+    uq_normalise = gandalf and SCALE_DATA
+    log1p = SCALE_DATA
 
     if _is_parquet_dataset(DATASET):
         return load_parquet_data(
@@ -833,6 +843,7 @@ def load_data(
             minmax_scale=minmax_scale,
             clip_signal=clip_signal,
             uq_normalise=uq_normalise,
+            log1p=log1p,
         )
 
     ds = qn.open_dataset(DATASET)

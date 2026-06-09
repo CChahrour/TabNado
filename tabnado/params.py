@@ -60,6 +60,7 @@ class PipelineParams:
     CATBOOST_SEARCH_SPACE: str = "extended"
     CLASS_BALANCE: str = "none"
     EARLY_STOPPING_ROUNDS: int = 10
+    SCALE_DATA: bool = True
 
     @classmethod
     def from_yaml(cls, params_path: Path | str) -> "PipelineParams":
@@ -133,6 +134,7 @@ class PipelineParams:
             CATBOOST_SEARCH_SPACE=catboost_search_space,
             CLASS_BALANCE=class_balance,
             EARLY_STOPPING_ROUNDS=int(p.get("early_stopping", 10)),
+            SCALE_DATA=bool(p.get("scale_data", True)),
         )
 
     @staticmethod
