@@ -376,8 +376,8 @@ def plot_shap_summary_per_class(
     classes: list[str],
     target_col: str,
     FIG_DIR: str,
-    SHAP_DIR: str,
     wandb_run=None,
+    model_type: str = "gandalf",
 ) -> None:
     """Per-class ``shap.summary_plot`` beeswarm charts plus an overall bar plot.
 
@@ -394,7 +394,7 @@ def plot_shap_summary_per_class(
         return
 
     X_display = X_regions[feature_cols]
-    out_dir = os.path.join(SHAP_DIR, "summary_plots")
+    out_dir = FIG_DIR
     os.makedirs(out_dir, exist_ok=True)
 
     bar_path = f"{out_dir}/shap_summary_bar_{target_col}.png"
@@ -423,6 +423,7 @@ def plot_shap_summary_per_class(
             show=False,
         )
         plt.savefig(class_path, bbox_inches="tight", dpi=120)
+        plt.title(f"SHAP Summary for {target_col} = {class_name} ({model_type.upper()})")
         plt.close()
         logger.info(f"Saved SHAP summary plot for class '{class_name}': {class_path}")
         if wandb_run is not None:
