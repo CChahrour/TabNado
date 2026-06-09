@@ -81,6 +81,7 @@ def _plot_roc_curve(
     FIG_DIR: str,
     EVAL_DIR: str,
     wandb_run=None,
+    model_type: str = "gandalf",
 ) -> dict[str, float]:
     if probabilities is None or not classes:
         logger.info("Skipping ROC curve: probability columns are unavailable")
@@ -183,7 +184,7 @@ def _plot_roc_curve(
     ax.plot([0, 1], [0, 1], color="gray", linestyle="--", linewidth=1)
     ax.set_xlabel("False positive rate")
     ax.set_ylabel("True positive rate")
-    ax.set_title(f"{target_col} ROC")
+    ax.set_title(f"{target_col} ROC ({model_type.upper()})")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1.02)
     ax.set_aspect("equal", adjustable="box")
@@ -298,6 +299,7 @@ def evaluate_model(
                 FIG_DIR,
                 EVAL_DIR,
                 wandb_run=wandb_run,
+                model_type=model_type,
             )
         )
 
@@ -310,7 +312,7 @@ def evaluate_model(
         ax.set_yticks(range(len(labels)), labels=labels)
         ax.set_xlabel("Predicted")
         ax.set_ylabel("True")
-        ax.set_title(f"{target_col} classification")
+        ax.set_title(f"{target_col} ({model_type.upper()})")
         for i in range(cm.shape[0]):
             for j in range(cm.shape[1]):
                 ax.text(j, i, str(cm[i, j]), ha="center", va="center")
@@ -373,7 +375,7 @@ def evaluate_model(
         fig, ax = plt.subplots(figsize=(5, 4))
         ax.scatter(test_data[col], pred_df[col], s=2, alpha=0.3, rasterized=True)
         r2 = r2_score(test_data[col], pred_df[col])
-        ax.set_title(f"{col}\nR2={r2:.3f}")
+        ax.set_title(f"{col} ({model_type.upper()})\nR2={r2:.3f}")
         ax.set_xlabel("True")
         ax.set_ylabel("Predicted")
         fig.tight_layout()
@@ -529,7 +531,7 @@ def compute_umap_embeddings(
         plt.colorbar(sc, ax=ax, label=label)
     ax.set_xlabel("UMAP-1")
     ax.set_ylabel("UMAP-2")
-    ax.set_title("GANDALF backbone embeddings")
+    ax.set_title(f"{model_type.upper()} backbone embeddings")
     umap_fig_path = f"{FIG_DIR}/embeddings_umap.png"
     fig.savefig(umap_fig_path)
     plt.close(fig)

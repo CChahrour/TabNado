@@ -94,6 +94,7 @@ def plot_shap_stacked_bar(
     SHAP_DIR: str,
     max_features: int = 30,
     wandb_run=None,
+    model_type: str = "gandalf",
 ) -> str:
     """Plot cofactor-level mean |SHAP| as stacked bars by output."""
     cofactor_data = cofactor_shap_table(mean_abs_shap)
@@ -136,7 +137,7 @@ def plot_shap_stacked_bar(
     ax.invert_yaxis()
     ax.set_xlabel("Mean |SHAP|")
     ax.set_ylabel("Feature")
-    ax.set_title("Stacked SHAP importance by cofactor")
+    ax.set_title(f"Stacked SHAP importance by cofactor ({model_type.upper()})")
     ax.legend(
         title="Output",
         fontsize=8,
@@ -186,6 +187,7 @@ def _plot_spatial_shap(
     FIG_DIR: str = "figures",
     tile_size: int = 100,
     wandb_run=None,
+    model_type: str = "gandalf",
 ):
     """
     Create spatial SHAP visualizations aggregating importance by TSS offset.
@@ -266,7 +268,7 @@ def _plot_spatial_shap(
         )
         ax.set_xlabel("Offset from TSS (bp)")
         ax.set_ylabel("Cofactor")
-        ax.set_title(f"Spatial SHAP Importance ({target_col})")
+        ax.set_title(f"Spatial SHAP Importance — {target_col} ({model_type.upper()})")
         heatmap_path = (
             f"{FIG_DIR}/shap_spatial_heatmap_{target_col.replace('/', '_')}.png"
         )
@@ -292,7 +294,7 @@ def _plot_spatial_shap(
         ax.axvline(x=0, color="black", linestyle="--", alpha=0.5, label="TSS center")
         ax.set_xlabel("Offset from TSS (bp)")
         ax.set_ylabel("Mean |SHAP|")
-        ax.set_title(f"Genomic Distance Importance Profile ({target_col})")
+        ax.set_title(f"Genomic Distance Importance Profile — {target_col} ({model_type.upper()})")
         ax.grid(True, alpha=0.3)
         ax.legend(
             fontsize=7, bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0
@@ -313,6 +315,7 @@ def _plot_clustermap(
     output_cols: list[str],
     FIG_DIR: str,
     wandb_run=None,
+    model_type: str = "gandalf",
 ) -> None:
     """Aggregate over tile offsets and plot one row per cofactor."""
 
@@ -340,7 +343,7 @@ def _plot_clustermap(
     g.ax_heatmap.set_xticklabels(
         g.ax_heatmap.get_xticklabels(), fontsize=9, rotation=30, ha="right"
     )
-    g.figure.suptitle("Mean |SHAP| per cofactor", y=1.06, fontsize=11)
+    g.figure.suptitle(f"Mean |SHAP| per cofactor ({model_type.upper()})", y=1.06, fontsize=11)
     # Add horizontal colorbar between title and heatmap using heatmap axes position
     g.figure.canvas.draw()
     hm_pos = g.ax_heatmap.get_position()
@@ -731,13 +734,14 @@ def compute_shap(
             wandb_run=wandb_run,
         )
 
-    _plot_clustermap(mean_abs_shap, output_cols, FIG_DIR, wandb_run=wandb_run)
+    _plot_clustermap(mean_abs_shap, output_cols, FIG_DIR, wandb_run=wandb_run, model_type=model_type)
 
     plot_shap_stacked_bar(
         mean_abs_shap,
         FIG_DIR,
         SHAP_DIR,
         wandb_run=wandb_run,
+        model_type=model_type,
     )
 
     # === SPATIAL SHAP ANALYSIS ===
@@ -751,6 +755,7 @@ def compute_shap(
         FIG_DIR,
         tile_size,
         wandb_run=wandb_run,
+        model_type=model_type,
     )
 
 
