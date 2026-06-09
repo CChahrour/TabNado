@@ -731,7 +731,6 @@ def compute_shap(
             classes,
             target_col,
             FIG_DIR,
-            SHAP_DIR,
             wandb_run=wandb_run,
         )
 
