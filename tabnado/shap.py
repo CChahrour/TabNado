@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+
+if not hasattr(np, "bool8"):
+    np.bool8 = np.bool_
+
 import shap as shap_pkg
 from loguru import logger
 from matplotlib import cm, colors
